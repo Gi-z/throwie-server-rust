@@ -67,7 +67,7 @@ async fn main() -> std::io::Result<()> {
             let timestamp_us = u128::try_from(msg.timestamp.unwrap()).unwrap();
             let timestamp = Timestamp::Microseconds(timestamp_us).into();
 
-            let src_mac = format!("0x{}", msg.src_mac.unwrap()[5]);
+            let src_mac = format!("0x{:X}", msg.src_mac.unwrap()[5]);
             if !unique_clients.contains(&src_mac) {
                 unique_clients.push(src_mac.clone());
                 println!("Added new client with src_mac: {}", &src_mac);
