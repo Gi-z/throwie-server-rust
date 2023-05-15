@@ -87,7 +87,7 @@ async fn main() -> std::io::Result<()> {
             
             readings.push(new_reading);
             if (readings.len() > MESSAGE_BATCH_SIZE) {
-                write_batch(&client, readings).await;
+                write_batch(&client, &readings).await;
                 readings.clear();
             }
         }
