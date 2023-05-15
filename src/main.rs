@@ -64,7 +64,7 @@ async fn main() -> std::io::Result<()> {
             let timestamp = Timestamp::Microseconds(timestamp_us).into();
 
             let mac = msg.src_mac.unwrap();
-            let src_mac = mac.iter().fold("".to_string(), |str, i| format!("{}:{:X}", str, i).to_string());
+            let src_mac = mac[1 .. ].iter().fold("00".to_string(), |str, i| format!("{}:{:X}", str, i).to_string());
             
             let new_reading = vec!(
                 CSIReading {
