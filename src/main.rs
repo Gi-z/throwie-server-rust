@@ -12,6 +12,8 @@ use csimsg::{CSIMessage};
 const UDP_SERVER_PORT: u16 = 6969;
 const UDP_MESSAGE_SIZE: usize = 170;
 
+const MESSAGE_BATCH_SIZE: usize = 500;
+
 fn recv_message(socket: &UdpSocket) -> std::io::Result<CSIMessage> {
     let mut buf = [0; UDP_MESSAGE_SIZE];
     let (bytes_count, _) = socket.recv_from(&mut buf)?;
@@ -33,7 +35,7 @@ struct CSIReading {
     #[influxdb(tag)] mac: String,
 }
 
-async fn write_msg(client: &Client, readings: Vec<WriteQuery>) {
+async fn write_batch(client: &Client, readings: &Vec<WriteQuery>) {
     let write_result = client
         .query(readings)
         .await;
@@ -54,6 +56,8 @@ async fn main() -> std::io::Result<()> {
 
         println!("Successfully bound port {UDP_SERVER_PORT}.");
 
+        let mut readings = Vec::new();
+
         loop {
             let msg: CSIMessage = recv_message(&socket)?;
 
@@ -66,15 +70,26 @@ async fn main() -> std::io::Result<()> {
             let mac = msg.src_mac.unwrap();
             let src_mac = mac[1 .. ].iter().fold("00".to_string(), |str, i| format!("{}:{:X}", str, i).to_string());
             
-            let new_reading = vec!(
-                CSIReading {
-                    time: timestamp,
-                    rssi: rssi,
-                    mac: src_mac,
-                }.into_query("messages"),
-            );
+            // let new_reading = vec!(
+            //     CSIReading {
+            //         time: timestamp,
+            //         rssi: rssi,
+            //         mac: src_mac,
+            //     }.into_query("messages"),
+            // );
+            let new_reading = CSIReading {
+                time: timestamp,
+                rssi: rssi,
+                mac: src_mac,
+            }.into_query("messages");
             
-            write_msg(&client, new_reading).await;
+            // write_msg(&client, new_reading).await;
+            
+            readings.push(new_reading);
+            if (readings.len() > MESSAGE_BATCH_SIZE) {
+                write_batch(&client, readings).await;
+                readings.clear();
+            }
         }
     }
 }
