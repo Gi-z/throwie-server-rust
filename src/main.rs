@@ -1,4 +1,4 @@
-
+use std::thread;
 use std::net::UdpSocket;
 
 use influxdb::{Client, WriteQuery, Timestamp};
@@ -35,7 +35,7 @@ struct CSIReading {
     #[influxdb(tag)] mac: String,
 }
 
-async fn write_batch(client: &Client, readings: &Vec<WriteQuery>) {
+async fn write_batch(client: &Client, readings: Vec<WriteQuery>) {
     let write_result = client
         .query(readings)
         .await;
@@ -56,38 +56,33 @@ async fn main() -> std::io::Result<()> {
 
         println!("Successfully bound port {UDP_SERVER_PORT}.");
 
+        let mut unique_clients: Vec<String> = Vec::new();
         let mut readings = Vec::new();
 
         loop {
             let msg: CSIMessage = recv_message(&socket)?;
 
             let rssi = i8::try_from(msg.rssi.unwrap()).ok().unwrap();
-            // println!("RSSI: {}", rssi);
 
             let timestamp_us = u128::try_from(msg.timestamp.unwrap()).unwrap();
             let timestamp = Timestamp::Microseconds(timestamp_us).into();
 
-            let mac = msg.src_mac.unwrap();
-            let src_mac = mac[1 .. ].iter().fold("00".to_string(), |str, i| format!("{}:{:X}", str, i).to_string());
+            let src_mac = format!("0x{}", msg.src_mac.unwrap()[5]);
+            if !unique_clients.contains(&src_mac) {
+                unique_clients.push(src_mac.clone());
+                println!("Added new client with src_mac: {}", &src_mac);
+            }
             
-            // let new_reading = vec!(
-            //     CSIReading {
-            //         time: timestamp,
-            //         rssi: rssi,
-            //         mac: src_mac,
-            //     }.into_query("messages"),
-            // );
             let new_reading = CSIReading {
                 time: timestamp,
                 rssi: rssi,
                 mac: src_mac,
             }.into_query("messages");
             
-            // write_msg(&client, new_reading).await;
-            
             readings.push(new_reading);
-            if (readings.len() > MESSAGE_BATCH_SIZE) {
-                write_batch(&client, &readings).await;
+            if readings.len() > MESSAGE_BATCH_SIZE {
+                let batch = readings.clone();
+                write_batch(&client, batch).await;
                 readings.clear();
             }
         }
