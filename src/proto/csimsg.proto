@@ -1,0 +1,12 @@
+syntax = "proto2";
+
+message CSIMessage {
+    required int64 timestamp = 1 [default = 0];
+    required bytes src_mac = 2 [default = "DEADBEEEEEFF"];
+    required sint32 sequence_identifier = 3 [default = 0];
+    required sint32 rssi = 4 [default = 0];
+    required sint32 noise_floor = 5 [default = 0];
+    required uint32 csi_crc32 = 6 [default = 0];
+    required bytes csi_data = 7;
+    required int32 moo_sig = 8 [default = 6969];
+}
