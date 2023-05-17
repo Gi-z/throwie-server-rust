@@ -5,7 +5,7 @@ use thiserror::Error;
 use influxdb::{Timestamp, WriteQuery};
 use influxdb::InfluxDbWriteable;
 
-use protobuf::{Message, Error};
+use protobuf::{Message};
 
 include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
 use csimsg::{CSIMessage};
@@ -18,7 +18,7 @@ const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
 #[derive(Error, Debug)]
 pub enum RetrieveCSIError {
     #[error("Could not receive data from UDP socket.")]
-    SocketRecvError,
+    SocketRecvError(),
 
     #[error("CSI expected_size: {0} is larger than allocated buffer: {1}.")]
     CSITooBigError(usize, usize),
@@ -44,8 +44,11 @@ pub fn open_csi_socket() -> UdpSocket {
 
 pub fn recv_message(socket: &UdpSocket) -> Result<CSIMessage, RetrieveCSIError> {
     let mut buf = [0; UDP_MESSAGE_SIZE];
-    let (bytes_count, _) = socket.recv_from(&mut buf)
-                                        .expect("Received no data");
+    let recv_result = socket.recv_from(&mut buf);
+    let (_, _) = match recv_result {
+        Ok(i) => i,
+        Err(_) => return Err(RetrieveCSIError::SocketRecvError())
+    };
 
     let expected_size = buf[0] as usize;
     
@@ -75,9 +78,9 @@ pub fn get_write_query(msg: &CSIMessage) -> WriteQuery {
     }.into_query(CSI_METRICS_MEASUREMENT)
 }
 
-fn get_csi_measurement(socket: &UdpSocket) -> Option<WriteQuery> {
-    match recv_message(&socket) {
-        Ok(m) => Some(get_write_query(&m)),
-        Err(error) => None
-    }
-}
+// fn get_csi_measurement(socket: &UdpSocket) -> Option<WriteQuery> {
+//     match recv_message(&socket) {
+//         Ok(m) => Some(get_write_query(&m)),
+//         Err(error) => None
+//     }
+// }
