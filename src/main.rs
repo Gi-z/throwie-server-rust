@@ -5,7 +5,7 @@ use influxdb::InfluxDbWriteable;
 
 mod csi;
 
-const MESSAGE_BATCH_SIZE: usize = 500;
+const MESSAGE_BATCH_SIZE: usize = 1000;
 
 #[derive(InfluxDbWriteable)]
 struct IngestMetricsReading {
