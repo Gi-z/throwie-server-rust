@@ -77,10 +77,3 @@ pub fn get_write_query(msg: &CSIMessage) -> WriteQuery {
         mac: src_mac,
     }.into_query(CSI_METRICS_MEASUREMENT)
 }
-
-// fn get_csi_measurement(socket: &UdpSocket) -> Option<WriteQuery> {
-//     match recv_message(&socket) {
-//         Ok(m) => Some(get_write_query(&m)),
-//         Err(error) => None
-//     }
-// }

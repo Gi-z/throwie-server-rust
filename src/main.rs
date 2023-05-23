@@ -1,12 +1,18 @@
-// use sysinfo::{NetworkExt, NetworksExt, ProcessExt, System, SystemExt};
-
 use influxdb::{Client, WriteQuery};
 
 mod csi;
 
-const MESSAGE_BATCH_SIZE: usize = 1000;
+const MESSAGE_BATCH_SIZE: usize = 5000;
 
 async fn write_batch(client: &Client, readings: Vec<WriteQuery>) {
+    let write_result = client
+        .query(readings)
+        .await;
+    assert!(write_result.is_ok(), "Write result was not okay");
+}
+
+async fn write_batch_async(readings: Vec<WriteQuery>) {
+    let client = Client::new("http://localhost:8086", "influx");
     let write_result = client
         .query(readings)
         .await;
@@ -43,7 +49,10 @@ async fn main() {
         readings.push(reading);
         if readings.len() > MESSAGE_BATCH_SIZE {
             let batch = readings.clone();
-            write_batch(&client, batch).await;
+            // write_batch(&client, batch).await;
+            tokio::spawn(async move {
+                write_batch_async(batch).await;
+            });
             readings.clear();
         }
     }
