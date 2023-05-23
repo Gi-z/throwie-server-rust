@@ -4,15 +4,7 @@ mod csi;
 
 const MESSAGE_BATCH_SIZE: usize = 5000;
 
-async fn write_batch(client: &Client, readings: Vec<WriteQuery>) {
-    let write_result = client
-        .query(readings)
-        .await;
-    assert!(write_result.is_ok(), "Write result was not okay");
-}
-
-async fn write_batch_async(readings: Vec<WriteQuery>) {
-    let client = Client::new("http://localhost:8086", "influx");
+async fn write_batch(client: Client, readings: Vec<WriteQuery>) {
     let write_result = client
         .query(readings)
         .await;
@@ -50,8 +42,9 @@ async fn main() {
         if readings.len() > MESSAGE_BATCH_SIZE {
             let batch = readings.clone();
             // write_batch(&client, batch).await;
+            let client_task = client.clone();
             tokio::spawn(async move {
-                write_batch_async(batch).await;
+                write_batch(client_task, batch).await;
             });
             readings.clear();
         }
