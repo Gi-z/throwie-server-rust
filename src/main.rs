@@ -16,7 +16,7 @@ async fn write_batch(client: &Client, readings: Vec<WriteQuery>) {
 #[tokio::main]
 async fn main() {
     // InfluxDB client.
-    let client = Client::new("http://csi-hub:8086", "influx");
+    let client = Client::new("http://localhost:8086", "influx");
     
     // Open CSI UDP port.
     let socket = csi::open_csi_socket();
