@@ -1,0 +1,26 @@
+syntax = "proto2";
+
+package throwie;
+
+enum TelemetryDeviceType {
+    INJECTOR = 0;
+    COLLECTOR = 1;
+}
+
+enum TelemetryMessageType {
+    BOOT = 0;
+	STATUS = 1;
+	DROP_FRAME = 2;
+}
+
+message TelemetryMessage {
+    required int64 timestamp = 1 [default = 0];
+    required bytes device_mac = 2 [default = "DEADBEEF"];
+    required string version = 3 [default = "-1"];
+    required TelemetryDeviceType device_type = 4;
+    required bool is_eth = 5 [default = false];
+    required TelemetryMessageType message_type = 6;
+    required sint32 current_sequence_identifier = 7 [default = 0];
+    required int64 uptime_ms = 8 [default = 0]; 
+    required int32 moo_sig = 9 [default = 6969];
+}

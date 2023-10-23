@@ -5,10 +5,11 @@ use thiserror::Error;
 use influxdb::{Timestamp, WriteQuery};
 use influxdb::InfluxDbWriteable;
 
-use protobuf::{Message};
+use protobuf::Message;
 
 include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
-use csimsg::{CSIMessage};
+use csimsg::CSIMessage;
+use telemetrymsg::TelemetryMessage;
 
 pub const UDP_SERVER_PORT: u16 = 6969;
 pub const UDP_MESSAGE_SIZE: usize = 170;
@@ -16,12 +17,12 @@ pub const UDP_MESSAGE_SIZE: usize = 170;
 const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
 
 #[derive(Error, Debug)]
-pub enum RetrieveCSIError {
+pub enum RetrieveMsgError {
     #[error("Could not receive data from UDP socket.")]
     SocketRecvError(),
 
     #[error("CSI expected_size: {0} is larger than allocated buffer: {1}.")]
-    CSITooBigError(usize, usize),
+    MsgTooBigError(usize, usize),
 
     #[error("Failed to parse protobuf from buffer contents.")]
     ProtobufParseError(#[from] protobuf::Error),
@@ -31,6 +32,7 @@ pub enum RetrieveCSIError {
 struct CSIReading {
     time: Timestamp,
     rssi: i8,
+    // interval: i32,
     #[influxdb(tag)] mac: String,
 }
 
@@ -42,25 +44,28 @@ pub fn open_csi_socket() -> UdpSocket {
     }
 }
 
-pub fn recv_message(socket: &UdpSocket) -> Result<CSIMessage, RetrieveCSIError> {
+pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; 170], usize), RetrieveMsgError> {
     let mut buf = [0; UDP_MESSAGE_SIZE];
     let recv_result = socket.recv_from(&mut buf);
     let (_, _) = match recv_result {
         Ok(i) => i,
-        Err(_) => return Err(RetrieveCSIError::SocketRecvError())
+        Err(_) => return Err(RetrieveMsgError::SocketRecvError())
     };
 
     let expected_size = buf[0] as usize;
     
     // If the size we expect to read is too large for buf then throw error.
     if expected_size > UDP_MESSAGE_SIZE - 1 {
-        return Err(RetrieveCSIError::CSITooBigError(expected_size, UDP_MESSAGE_SIZE))
+        return Err(RetrieveMsgError::MsgTooBigError(expected_size, UDP_MESSAGE_SIZE))
     }
 
-    let expected_protobuf = &buf[1 .. expected_size + 1];
-    let msg = CSIMessage::parse_from_bytes(expected_protobuf)?;
+    // let expected_buf = &buf[1 .. expected_size + 1];
 
-    Ok(msg)
+    Ok((buf, expected_size))
+}
+
+pub fn parse_csi_message(expected_protobuf: &[u8]) -> Result<CSIMessage, protobuf::Error>  {
+    CSIMessage::parse_from_bytes(expected_protobuf)
 }
 
 pub fn get_write_query(msg: &CSIMessage) -> WriteQuery {
