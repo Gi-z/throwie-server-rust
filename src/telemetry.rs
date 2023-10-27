@@ -40,7 +40,7 @@ pub fn get_reading(msg: &TelemetryMessage) -> TelemetryReading {
     let device_type = msg.device_type.unwrap().enum_value().unwrap() as i8;
     let is_eth = msg.is_eth.unwrap();
 
-    println!("Received telemetry message type: {} from device: {} and device_type: {} with uptime: {}.", message_type, device_mac, device_type, uptime_ms);
+    // println!("Received telemetry message type: {} from device: {} and device_type: {} with uptime: {}.", message_type, device_mac, device_type, uptime_ms);
     // println!("Received telemetry message type: {} and device_type: {}.", message_type, device_type);
 
     TelemetryReading {
