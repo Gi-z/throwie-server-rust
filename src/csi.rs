@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::UdpSocket;
 
 use thiserror::Error;
@@ -14,7 +15,7 @@ use telemetrymsg::TelemetryMessage;
 pub const UDP_SERVER_PORT: u16 = 6969;
 pub const UDP_MESSAGE_SIZE: usize = 170;
 
-const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
+pub const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
 
 #[derive(Error, Debug)]
 pub enum RetrieveMsgError {
@@ -29,11 +30,12 @@ pub enum RetrieveMsgError {
 }
 
 #[derive(InfluxDbWriteable)]
-struct CSIReading {
+pub struct CSIReading {
     time: Timestamp,
     rssi: i8,
-    // interval: i32,
-    #[influxdb(tag)] mac: String,
+    pub sequence_identifier: i32,
+    pub interval: i32,
+    #[influxdb(tag)] pub mac: String,
 }
 
 pub fn open_csi_socket() -> UdpSocket {
@@ -68,17 +70,25 @@ pub fn parse_csi_message(expected_protobuf: &[u8]) -> Result<CSIMessage, protobu
     CSIMessage::parse_from_bytes(expected_protobuf)
 }
 
-pub fn get_write_query(msg: &CSIMessage) -> WriteQuery {
+pub fn get_reading(msg: &CSIMessage) -> CSIReading {
     let rssi = i8::try_from(msg.rssi.unwrap()).ok().unwrap();
+
+    let sequence_identifier: i32 = i32::try_from(msg.sequence_identifier.unwrap()).ok().unwrap();
 
     let timestamp_us = u128::try_from(msg.timestamp.unwrap()).unwrap();
     let timestamp = Timestamp::Microseconds(timestamp_us).into();
 
     let src_mac = format!("0x{:X}", msg.src_mac.clone().unwrap()[5]);
+
+    let interval = 1;
     
-    CSIReading {
+    let mut reading = CSIReading {
         time: timestamp,
         rssi: rssi,
         mac: src_mac,
-    }.into_query(CSI_METRICS_MEASUREMENT)
+        sequence_identifier: sequence_identifier,
+        interval: interval
+    };
+
+    reading
 }

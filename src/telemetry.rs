@@ -8,10 +8,10 @@ use protobuf::Message;
 include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
 use telemetrymsg::TelemetryMessage;
 
-const SENSOR_TELEMETRY_MEASUREMENT: &str = "telemetry";
+pub const SENSOR_TELEMETRY_MEASUREMENT: &str = "telemetry";
 
 #[derive(InfluxDbWriteable)]
-struct TelemetryReading {
+pub struct TelemetryReading {
     time: Timestamp,
     current_sequence_identifier: i16,
     uptime_ms: i64,
@@ -27,7 +27,7 @@ pub fn parse_telemetry_message(expected_protobuf: &[u8]) -> Result<TelemetryMess
     TelemetryMessage::parse_from_bytes(expected_protobuf)
 }
 
-pub fn get_write_query(msg: &TelemetryMessage) -> WriteQuery {
+pub fn get_reading(msg: &TelemetryMessage) -> TelemetryReading {
     let timestamp_us = u128::try_from(msg.timestamp.unwrap()).unwrap();
     let timestamp = Timestamp::Microseconds(timestamp_us).into();
 
@@ -53,5 +53,5 @@ pub fn get_write_query(msg: &TelemetryMessage) -> WriteQuery {
         version: version,
         device_type: device_type,
         is_eth: is_eth
-    }.into_query(SENSOR_TELEMETRY_MEASUREMENT)
+    }
 }
