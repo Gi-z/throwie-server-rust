@@ -25,7 +25,7 @@ async fn main() {
     println!("Successfully bound port {}.", csi::UDP_SERVER_PORT);
     let mut write_queries = Vec::new();
 
-    let mut SEQUENCE_MAP: HashMap<String, i32> = HashMap::new();
+    let mut frame_map: HashMap<String, csi::CSIMessageReading> = HashMap::new();
 
     loop {
         let recv_result = csi::recv_buf(&socket);
@@ -51,12 +51,15 @@ async fn main() {
                 Err(_) => continue
             };
 
-            let mut reading = csi::get_reading(&msg);
+            let mut msg_reading: csi::CSIMessageReading = csi::get_reading(&msg);
+            let mut reading = msg_reading.reading.clone();
             let sequence_identifier = reading.sequence_identifier;
 
-            match SEQUENCE_MAP.get(&reading.mac) {
-                Some(ret_sequence) => {
-                    if ret_sequence > &sequence_identifier {
+            match frame_map.get(&reading.mac) {
+                Some(frame) => {
+                    // Get interval
+                    let ret_sequence: i32 = i32::try_from(frame.reading.sequence_identifier).ok().unwrap();
+                    if ret_sequence > sequence_identifier {
                         // Wraparound has occurred. Get diff minus u16 max.
                         let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
                         reading.interval = sequence_identifier + ret_diff_from_max;
@@ -64,19 +67,19 @@ async fn main() {
                         reading.interval = sequence_identifier - ret_sequence;
                     }
 
-                    *SEQUENCE_MAP.get_mut(&reading.mac).unwrap() = sequence_identifier;
+                    // Get PCC
+                    let new_matrix = msg_reading.csi_matrix.clone();
+                    let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
+
+                    reading.correlation_coefficient = corr;
+
+                    *frame_map.get_mut(&reading.mac).unwrap() = msg_reading;
                 }
                 None => {
-                    SEQUENCE_MAP.insert(reading.mac.clone(), sequence_identifier);
+                    frame_map.insert(reading.mac.clone(), msg_reading);
                     println!("Added new client with src_mac: {}", reading.mac.clone());
                 }
             }
-
-            // let src_mac = format!("0x{:X}", msg.src_mac.clone().unwrap()[5]);
-            // if !unique_clients.contains(&src_mac) {
-            //     unique_clients.push(src_mac.clone());
-            //     
-            // }
 
             write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
         }
@@ -84,10 +87,6 @@ async fn main() {
         if write_queries.len() > MESSAGE_BATCH_SIZE {
             let batch = write_queries.clone();
             write_batch(&client, batch).await;
-            // let client_task = client.clone();
-            // tokio::spawn(async move {
-            //     write_batch(client_task, batch).await;
-            // });
             write_queries.clear();
         }
     }
