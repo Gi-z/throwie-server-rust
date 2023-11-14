@@ -21,6 +21,9 @@ pub const UDP_MESSAGE_SIZE: usize = 170;
 
 pub const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
 
+// const FILTER_SUBARRIERS: [u8; 13] = [0, 1, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37];
+const REQUIRED_SUBCARRIERS: [usize; 51] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
+
 #[derive(Error, Debug)]
 pub enum RetrieveMsgError {
     #[error("Could not receive data from UDP socket.")]
@@ -102,9 +105,14 @@ fn get_csi_matrix(msg: &CSIMessage) -> Result<Array<f32, Ix2>, RetrieveMsgError>
         csi_matrix[[0, n]] = norm;
     }
 
-    // print!("{:?}", csi_matrix);
+    let mut filtered_csi_matrix = Array::zeros((1, 51));
+    for (n, val) in REQUIRED_SUBCARRIERS.into_iter().enumerate() {
+        filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]];
+    }
 
-    Ok(csi_matrix)
+    // print!("{:?}", filtered_csi_matrix);
+
+    Ok(filtered_csi_matrix)
 }
 
 pub fn get_correlation_coefficient(frame: Array<f32, Ix2>, frame2: &Array<f32, Ix2>) -> Result<f32, RetrieveMsgError> {
