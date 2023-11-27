@@ -1,9 +1,6 @@
 use std::net::UdpSocket;
 
 use ndarray_stats::CorrelationExt;
-use num::Complex;
-use num::integer::Roots;
-use num::traits::float;
 use thiserror::Error;
 
 use num;
@@ -102,12 +99,16 @@ fn get_csi_matrix(msg: &CSIMessage) -> Result<Array<f32, Ix2>, RetrieveMsgError>
         let sum_of_squares = imag.powi(2) + real.powi(2);
         let norm = sum_of_squares.sqrt();
 
-        csi_matrix[[0, n]] = norm;
+        let db_val = 20 as f32 * norm.log10();
+
+        csi_matrix[[0, n]] = db_val;
     }
+
+    let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.unwrap().clone() as i8);
 
     let mut filtered_csi_matrix = Array::zeros((1, 51));
     for (n, val) in REQUIRED_SUBCARRIERS.into_iter().enumerate() {
-        filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]];
+        filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]] * scaling_factor.sqrt();
     }
 
     // print!("{:?}", filtered_csi_matrix);
@@ -117,15 +118,20 @@ fn get_csi_matrix(msg: &CSIMessage) -> Result<Array<f32, Ix2>, RetrieveMsgError>
 
 pub fn get_correlation_coefficient(frame: Array<f32, Ix2>, frame2: &Array<f32, Ix2>) -> Result<f32, RetrieveMsgError> {
     let stacked = concatenate(Axis(0), &[frame2.view(), frame.view()]).unwrap();
-    // print!("{:?}\n\n", stacked);
-
     let corr = stacked.pearson_correlation().unwrap();
-    
-    // print!("{:?}\n\n", corr);
 
     let act = corr[[1, 0]];
 
     Ok(act)
+}
+
+pub fn get_scaling_factor(mag_vals: &Array<f32, Ix2>, rssi: i8) -> f32 {
+    let rssi_pwr = 10_f32.powi(rssi as i32 / 10);
+    // println!("Scaling CSIMeasurement CSI with RSSI_pwr {:?}", rssi_pwr);
+    let vec_mag = mag_vals.iter().map(|x| x.powi(2)).sum::<f32>();
+    let norm_vec_mag = vec_mag / 64_f32;
+    
+    rssi_pwr / norm_vec_mag
 }
 
 pub fn get_reading(msg: &CSIMessage) -> CSIMessageReading {
