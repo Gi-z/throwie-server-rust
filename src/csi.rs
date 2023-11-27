@@ -99,19 +99,20 @@ fn get_csi_matrix(msg: &CSIMessage) -> Result<Array<f32, Ix2>, RetrieveMsgError>
         let sum_of_squares = imag.powi(2) + real.powi(2);
         let norm = sum_of_squares.sqrt();
 
-        let db_val = 20 as f32 * norm.log10();
+        // if norm == 0.0 {
+        //     csi_matrix[[0, n]] = norm;
+        // } else {
+        //     let db_val = 20 as f32 * norm.log10();
+        //     csi_matrix[[0, n]] = db_val;
+        // }
 
-        csi_matrix[[0, n]] = db_val;
+        csi_matrix[[0, n]] = norm;
     }
-
-    let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.unwrap().clone() as i8);
 
     let mut filtered_csi_matrix = Array::zeros((1, 51));
     for (n, val) in REQUIRED_SUBCARRIERS.into_iter().enumerate() {
-        filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]] * scaling_factor.sqrt();
+        filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]];
     }
-
-    // print!("{:?}", filtered_csi_matrix);
 
     Ok(filtered_csi_matrix)
 }
@@ -125,10 +126,11 @@ pub fn get_correlation_coefficient(frame: Array<f32, Ix2>, frame2: &Array<f32, I
     Ok(act)
 }
 
-pub fn get_scaling_factor(mag_vals: &Array<f32, Ix2>, rssi: i8) -> f32 {
-    let rssi_pwr = 10_f32.powi(rssi as i32 / 10);
+pub fn get_scaling_factor(mag_vals: &Array<f32, Ix2>, rssi: i32) -> f32 {
+    let rssi_pwr = 10_f32.powi(rssi / 10);
     // println!("Scaling CSIMeasurement CSI with RSSI_pwr {:?}", rssi_pwr);
     let vec_mag = mag_vals.iter().map(|x| x.powi(2)).sum::<f32>();
+    // println!("Scaling opwedqqqwd {:?}", mag_vals);
     let norm_vec_mag = vec_mag / 64_f32;
     
     rssi_pwr / norm_vec_mag
