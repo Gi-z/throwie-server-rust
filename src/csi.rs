@@ -14,7 +14,8 @@ include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
 use csimsg::CSIMessage;
 
 pub const UDP_SERVER_PORT: u16 = 6969;
-pub const UDP_MESSAGE_SIZE: usize = 170;
+// pub const UDP_MESSAGE_SIZE: usize = 170;
+pub const UDP_MESSAGE_SIZE: usize = 2000;
 
 pub const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
 
@@ -44,7 +45,7 @@ pub struct CSIMessageReading {
 
 #[derive(Clone, InfluxDbWriteable)]
 pub struct CSIReading {
-    time: Timestamp,
+    pub time: Timestamp,
     rssi: i8,
     noise_floor: i8,
     pub correlation_coefficient: f32,
@@ -61,7 +62,7 @@ pub fn open_csi_socket() -> UdpSocket {
     }
 }
 
-pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; 170], usize), RetrieveMsgError> {
+pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; UDP_MESSAGE_SIZE], usize), RetrieveMsgError> {
     let mut buf = [0; UDP_MESSAGE_SIZE];
     let recv_result = socket.recv_from(&mut buf);
     let (_, _) = match recv_result {
@@ -90,31 +91,62 @@ use ndarray_stats;
 
 fn get_csi_matrix(msg: &CSIMessage) -> Result<Array<f32, Ix2>, RetrieveMsgError> {
     let csi_data = msg.csi_data.clone().unwrap();
-    let mut csi_matrix = Array::zeros((1, 64));
-    for n in 1..64 {
-        // print!("{:?}", csi_data);
-        let imag = csi_data[n * 2] as i8 as f32;
-        let real = csi_data[n * 2 + 1] as i8 as f32;
 
-        let sum_of_squares = imag.powi(2) + real.powi(2);
-        let norm = sum_of_squares.sqrt();
+    if csi_data.len() == 128 {
+        let mut csi_matrix = Array::zeros((1, 64));
+    
+        for n in 1..64 {
+            // print!("{:?}", csi_data);
+            let imag = csi_data[n * 2] as i8 as f32;
+            let real = csi_data[n * 2 + 1] as i8 as f32;
 
-        // if norm == 0.0 {
-        //     csi_matrix[[0, n]] = norm;
-        // } else {
-        //     let db_val = 20 as f32 * norm.log10();
-        //     csi_matrix[[0, n]] = db_val;
-        // }
+            let sum_of_squares = imag.powi(2) + real.powi(2);
+            let norm = sum_of_squares.sqrt();
 
-        csi_matrix[[0, n]] = norm;
+            // if norm == 0.0 {
+            //     csi_matrix[[0, n]] = norm;
+            // } else {
+            //     let db_val = 20 as f32 * norm.log10();
+            //     csi_matrix[[0, n]] = db_val;
+            // }
+
+            csi_matrix[[0, n]] = norm;
+        }
+
+        let mut filtered_csi_matrix = Array::zeros((1, 51));
+        for (n, val) in REQUIRED_SUBCARRIERS.into_iter().enumerate() {
+            filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]];
+        }
+
+        Ok(filtered_csi_matrix)
+    } else {
+        let mut csi_matrix = Array::zeros((1, 53));
+    
+        for n in 1..53 {
+            // print!("{:?}", csi_data);
+            let imag = csi_data[n * 2] as i8 as f32;
+            let real = csi_data[n * 2 + 1] as i8 as f32;
+
+            let sum_of_squares = imag.powi(2) + real.powi(2);
+            let norm = sum_of_squares.sqrt();
+
+            // if norm == 0.0 {
+            //     csi_matrix[[0, n]] = norm;
+            // } else {
+            //     let db_val = 20 as f32 * norm.log10();
+            //     csi_matrix[[0, n]] = db_val;
+            // }
+
+            csi_matrix[[0, n]] = norm;
+        }
+
+        let mut filtered_csi_matrix = Array::zeros((1, 53));
+        for n in 1..53 {
+            filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]];
+        }
+
+        Ok(filtered_csi_matrix)
     }
-
-    let mut filtered_csi_matrix = Array::zeros((1, 51));
-    for (n, val) in REQUIRED_SUBCARRIERS.into_iter().enumerate() {
-        filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]];
-    }
-
-    Ok(filtered_csi_matrix)
 }
 
 pub fn get_correlation_coefficient(frame: Array<f32, Ix2>, frame2: &Array<f32, Ix2>) -> Result<f32, RetrieveMsgError> {
