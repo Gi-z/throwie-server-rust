@@ -124,7 +124,7 @@ async fn main() {
                     // let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
 
                     // reading.correlation_coefficient = corr;
-                    reading.correlation_coefficient = 0;
+                    reading.correlation_coefficient = 0.0;
 
                     *frame_map.get_mut(&reading.mac).unwrap() = msg_reading;
                 }
