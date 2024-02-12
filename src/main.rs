@@ -120,10 +120,11 @@ async fn main() {
                     }
 
                     // Get PCC
-                    let new_matrix = msg_reading.csi_matrix.clone();
-                    let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
+                    // let new_matrix = msg_reading.csi_matrix.clone();
+                    // let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
 
-                    reading.correlation_coefficient = corr;
+                    // reading.correlation_coefficient = corr;
+                    reading.correlation_coefficient = 0;
 
                     *frame_map.get_mut(&reading.mac).unwrap() = msg_reading;
                 }
