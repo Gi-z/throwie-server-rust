@@ -56,7 +56,7 @@ async fn main() {
 
             let decompressed_data = miniz_oxide::inflate::decompress_to_vec_with_limit(compressed_data, 60000).expect("Failed to decompress!");
 
-            for i in 1 .. 16 {
+            for i in 0 .. 16 {
                 let protobuf_size = decompressed_data[(146 * i)] as usize;
                 let parse_result = csi::parse_csi_message(&decompressed_data[ (146 * i) + 1 .. ((146 * i) + 1) + protobuf_size ]);
                 let msg = match parse_result {
@@ -93,6 +93,10 @@ async fn main() {
                         println!("Added new client with src_mac: {} (time: {})", reading.mac.clone(), reading.time.clone());
                     }
                 }
+
+                // if reading.mac == "0x69" {
+                //     println!("{:#?}", reading);
+                // }
 
                 write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
             }

@@ -43,7 +43,7 @@ pub struct CSIMessageReading {
     pub csi_matrix: Array<f32, Ix2>
 }
 
-#[derive(Clone, InfluxDbWriteable)]
+#[derive(Clone, InfluxDbWriteable, Debug)]
 pub struct CSIReading {
     pub time: Timestamp,
     rssi: i8,
@@ -52,6 +52,7 @@ pub struct CSIReading {
     pub sequence_identifier: i32,
     pub interval: i32,
     #[influxdb(tag)] pub mac: String,
+    #[influxdb(tag)] antenna: i8,
 }
 
 pub fn open_csi_socket() -> UdpSocket {
@@ -169,6 +170,7 @@ pub fn get_scaling_factor(mag_vals: &Array<f32, Ix2>, rssi: i32) -> f32 {
 }
 
 pub fn get_reading(msg: &CSIMessage) -> CSIMessageReading {
+    let antenna = i8::try_from(msg.antenna.unwrap()).ok().unwrap();
     let rssi = i8::try_from(msg.rssi.unwrap()).ok().unwrap();
     let noise_floor = i8::try_from(msg.noise_floor.unwrap()).ok().unwrap();
 
@@ -184,6 +186,7 @@ pub fn get_reading(msg: &CSIMessage) -> CSIMessageReading {
     
     let reading = CSIReading {
         time: timestamp,
+        antenna: antenna,
         rssi: rssi,
         noise_floor: noise_floor,
         correlation_coefficient: correlation_coefficient,
