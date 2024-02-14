@@ -1,4 +1,5 @@
 use std::net::UdpSocket;
+use std::os::unix::net::SocketAddr;
 
 use ndarray_stats::CorrelationExt;
 use thiserror::Error;
@@ -14,8 +15,10 @@ include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
 use csimsg::CSIMessage;
 
 pub const UDP_SERVER_PORT: u16 = 6969;
-// pub const UDP_MESSAGE_SIZE: usize = 170;
 pub const UDP_MESSAGE_SIZE: usize = 2000;
+
+pub const SINGLE_CSI_FRAME_SIZE: usize = 145;
+pub const COMPRESSED_CSI_FRAME_SIZE: usize = SINGLE_CSI_FRAME_SIZE + 1;
 
 pub const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
 
@@ -63,24 +66,22 @@ pub fn open_csi_socket() -> UdpSocket {
     }
 }
 
-pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; UDP_MESSAGE_SIZE], usize), RetrieveMsgError> {
-    let mut buf = [0; UDP_MESSAGE_SIZE];
+pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; UDP_MESSAGE_SIZE], usize, std::net::SocketAddr), RetrieveMsgError> {
+    let mut buf: [u8; 2000] = [0; UDP_MESSAGE_SIZE];
     let recv_result = socket.recv_from(&mut buf);
-    let (_, _) = match recv_result {
+    let (len, addr) = match recv_result {
         Ok(i) => i,
         Err(_) => return Err(RetrieveMsgError::SocketRecvError())
     };
-
-    let expected_size = buf[0] as usize;
     
     // If the size we expect to read is too large for buf then throw error.
-    if expected_size > UDP_MESSAGE_SIZE - 1 {
-        return Err(RetrieveMsgError::MsgTooBigError(expected_size, UDP_MESSAGE_SIZE))
-    }
+    // if expected_size > UDP_MESSAGE_SIZE - 1 {
+    //     return Err(RetrieveMsgError::MsgTooBigError(expected_size, UDP_MESSAGE_SIZE))
+    // }
 
     // let expected_buf = &buf[1 .. expected_size + 1];
 
-    Ok((buf, expected_size))
+    Ok((buf, len, addr))
 }
 
 pub fn parse_csi_message(expected_protobuf: &[u8]) -> Result<CSIMessage, protobuf::Error>  {

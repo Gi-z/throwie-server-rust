@@ -1,11 +1,12 @@
-use protobuf_codegen::Codegen;
+extern crate protobuf;
+extern crate protobuf_codegen;
 
 fn main() {
-    Codegen::new()
+    protobuf_codegen::Codegen::new()
         .protoc()
-        .cargo_out_dir("proto")
+        .includes(&["src/proto"])
         .input("src/proto/csimsg.proto")
         .input("src/proto/telemetrymsg.proto")
-        .include("src/proto")
+        .cargo_out_dir("proto")
         .run_from_script();
 }

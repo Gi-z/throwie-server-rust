@@ -1,15 +1,38 @@
+extern crate protobuf;
+extern crate influxdb;
+extern crate byteorder;
+extern crate num_enum;
+
+extern crate inflate;
+
 use std::collections::HashMap;
 
 use influxdb::{Client, WriteQuery, InfluxDbWriteable};
 
-use miniz_oxide::inflate::decompress_to_vec;
-
 use byteorder::{ByteOrder, LittleEndian};
+
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+
+use thiserror::Error;
 
 mod csi;
 mod telemetry;
 
 const MESSAGE_BATCH_SIZE: usize = 1000;
+
+#[derive(IntoPrimitive, TryFromPrimitive)]
+#[repr(u8)]
+enum MessageType {
+    Telemetry = 0x01,
+    CSI = 0x02,
+    CSICompressed = 0x03
+}
+
+#[derive(Error, Debug)]
+pub enum MessageDecodeError {
+    #[error("Could not determine type for incoming Message.")]
+    MessageTypeDecodeError(),
+}
 
 async fn write_batch(client: &Client, readings: Vec<WriteQuery>) {
     let write_result = client
@@ -33,32 +56,30 @@ async fn main() {
 
     loop {
         let recv_result = csi::recv_buf(&socket);
-        let (recv_buf, expected_size) = match recv_result {
+        let (recv_buf, payload_size, addr) = match recv_result {
             Ok(m) => m,
             Err(_) => continue
         };
 
-        if recv_buf[1] == 0xFF {
-            let actual_protobuf = &recv_buf[ 2 .. (expected_size + 2) ];
-            let parse_result = telemetry::parse_telemetry_message(actual_protobuf);
-            let msg = match parse_result {
-                Ok(m) => m,
-                Err(_) => continue
-            };
+        let expected_payload = &recv_buf[ 1 .. payload_size ];
+        let Ok(message_type) = MessageType::try_from(recv_buf[0]) else {
+            println!("Could not determine type for incoming message from {:?} with size: {:?}.", addr, payload_size);
+            continue;
+        };
 
-            let reading = telemetry::get_reading(&msg);
-            write_queries.push(reading.into_query(telemetry::SENSOR_TELEMETRY_MEASUREMENT));
-        } else if recv_buf[0] == 0x57 {
-            // batch of readings
+        match message_type {
+            MessageType::Telemetry => {
+                let parse_result = telemetry::parse_telemetry_message(expected_payload);
+                let msg = match parse_result {
+                    Ok(m) => m,
+                    Err(_) => continue
+                };
 
-            let potential_size = LittleEndian::read_u16(&recv_buf[ 2 .. 4]) as usize;
-            let compressed_data = &recv_buf[ 5 .. (potential_size + 4) ];
-
-            let decompressed_data = miniz_oxide::inflate::decompress_to_vec_with_limit(compressed_data, 60000).expect("Failed to decompress!");
-
-            for i in 0 .. 16 {
-                let protobuf_size = decompressed_data[(146 * i)] as usize;
-                let parse_result = csi::parse_csi_message(&decompressed_data[ (146 * i) + 1 .. ((146 * i) + 1) + protobuf_size ]);
+                let reading = telemetry::get_reading(&msg);
+                write_queries.push(reading.into_query(telemetry::SENSOR_TELEMETRY_MEASUREMENT));
+            },
+            MessageType::CSI => {
+                let parse_result = csi::parse_csi_message(expected_payload);
                 let msg = match parse_result {
                     Ok(m) => m,
                     Err(_) => continue
@@ -81,10 +102,11 @@ async fn main() {
                         }
 
                         // Get PCC
-                        let new_matrix = msg_reading.csi_matrix.clone();
-                        let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
+                        // let new_matrix = msg_reading.csi_matrix.clone();
+                        // let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
 
-                        reading.correlation_coefficient = corr;
+                        // reading.correlation_coefficient = corr;
+                        reading.correlation_coefficient = 0.0;
 
                         *frame_map.get_mut(&reading.mac).unwrap() = msg_reading;
                     }
@@ -94,51 +116,68 @@ async fn main() {
                     }
                 }
 
-                // if reading.mac == "0x69" {
-                //     println!("{:#?}", reading);
-                // }
-
                 write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
-            }
-        } else {
-            let parse_result = csi::parse_csi_message(&recv_buf[ 1 .. expected_size + 1]);
-            let msg = match parse_result {
-                Ok(m) => m,
-                Err(_) => continue
-            };
+            },
+            MessageType::CSICompressed => {
+                // batch of readings
+                let decompressed_data = inflate::inflate_bytes_zlib(&expected_payload).unwrap();
+                let frame_count = decompressed_data.len() / csi::COMPRESSED_CSI_FRAME_SIZE;
 
-            let mut msg_reading: csi::CSIMessageReading = csi::get_reading(&msg);
-            let mut reading = msg_reading.reading.clone();
-            let sequence_identifier = reading.sequence_identifier;
+                if (decompressed_data.len() % csi::COMPRESSED_CSI_FRAME_SIZE) > 0 {
+                    println!("Could not determine the number of frames in compressed container from {:?} with size: {:?}.", addr, decompressed_data.len());
+                    continue;
+                }
 
-            match frame_map.get(&reading.mac) {
-                Some(frame) => {
-                    // Get interval
-                    let ret_sequence: i32 = i32::try_from(frame.reading.sequence_identifier).ok().unwrap();
-                    if ret_sequence > sequence_identifier {
-                        // Wraparound has occurred. Get diff minus u16 max.
-                        let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
-                        reading.interval = sequence_identifier + ret_diff_from_max;
-                    } else {
-                        reading.interval = sequence_identifier - ret_sequence;
+                for i in 0 .. frame_count {
+                    let protobuf_size = decompressed_data[csi::COMPRESSED_CSI_FRAME_SIZE * i] as usize;
+                    
+                    let protobuf_start = (csi::COMPRESSED_CSI_FRAME_SIZE * i) + 1;
+                    let protobuf_end = protobuf_start + protobuf_size;
+                    let protobuf_contents = &decompressed_data[ protobuf_start .. protobuf_end ];
+
+                    let parse_result = csi::parse_csi_message(protobuf_contents);
+                    let msg = match parse_result {
+                        Ok(m) => m,
+                        Err(_) => continue
+                    };
+
+                    let mut msg_reading: csi::CSIMessageReading = csi::get_reading(&msg);
+                    let mut reading = msg_reading.reading.clone();
+                    let sequence_identifier = reading.sequence_identifier;
+
+                    match frame_map.get(&reading.mac) {
+                        Some(frame) => {
+                            // Get interval
+                            let ret_sequence: i32 = i32::try_from(frame.reading.sequence_identifier).ok().unwrap();
+                            if ret_sequence > sequence_identifier {
+                                // Wraparound has occurred. Get diff minus u16 max.
+                                let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+                                reading.interval = sequence_identifier + ret_diff_from_max;
+                            } else {
+                                reading.interval = sequence_identifier - ret_sequence;
+                            }
+
+                            // Get PCC
+                            let new_matrix = msg_reading.csi_matrix.clone();
+                            let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
+
+                            reading.correlation_coefficient = corr;
+
+                            *frame_map.get_mut(&reading.mac).unwrap() = msg_reading;
+                        }
+                        None => {
+                            frame_map.insert(reading.mac.clone(), msg_reading);
+                            println!("Added new client with src_mac: {} (time: {})", reading.mac.clone(), reading.time.clone());
+                        }
                     }
 
-                    // Get PCC
-                    // let new_matrix = msg_reading.csi_matrix.clone();
-                    // let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
+                    // if reading.mac == "0x69" {
+                    //     println!("{:#?}", reading);
+                    // }
 
-                    // reading.correlation_coefficient = corr;
-                    reading.correlation_coefficient = 0.0;
-
-                    *frame_map.get_mut(&reading.mac).unwrap() = msg_reading;
-                }
-                None => {
-                    frame_map.insert(reading.mac.clone(), msg_reading);
-                    println!("Added new client with src_mac: {} (time: {})", reading.mac.clone(), reading.time.clone());
+                    write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
                 }
             }
-
-            write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
         }
         
         if write_queries.len() > MESSAGE_BATCH_SIZE {
