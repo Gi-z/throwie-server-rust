@@ -55,7 +55,7 @@ pub struct CSIReading {
     pub sequence_identifier: i32,
     pub interval: i32,
     #[influxdb(tag)] pub mac: String,
-    #[influxdb(tag)] antenna: i8,
+    #[influxdb(tag)] pub antenna: i8,
 }
 
 pub fn open_csi_socket() -> UdpSocket {

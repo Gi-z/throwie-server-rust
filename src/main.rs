@@ -5,7 +5,7 @@ extern crate num_enum;
 
 extern crate inflate;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::read};
 
 use influxdb::{Client, WriteQuery, InfluxDbWriteable};
 
@@ -89,10 +89,12 @@ async fn main() {
                 let mut reading = msg_reading.reading.clone();
                 let sequence_identifier = reading.sequence_identifier;
 
-                match frame_map.get(&reading.mac) {
-                    Some(frame) => {
+                let key = format!("{}/{}", reading.mac.clone(), reading.antenna.clone());
+
+                match frame_map.get(&key) {
+                    Some(stored_frame) => {
                         // Get interval
-                        let ret_sequence: i32 = i32::try_from(frame.reading.sequence_identifier).ok().unwrap();
+                        let ret_sequence: i32 = i32::try_from(stored_frame.reading.sequence_identifier).ok().unwrap();
                         if ret_sequence > sequence_identifier {
                             // Wraparound has occurred. Get diff minus u16 max.
                             let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
@@ -102,17 +104,16 @@ async fn main() {
                         }
 
                         // Get PCC
-                        // let new_matrix = msg_reading.csi_matrix.clone();
-                        // let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
+                        let new_matrix = msg_reading.csi_matrix.clone();
+                        let corr = csi::get_correlation_coefficient(new_matrix, &stored_frame.csi_matrix).unwrap();
 
-                        // reading.correlation_coefficient = corr;
-                        reading.correlation_coefficient = 0.0;
+                        reading.correlation_coefficient = corr;
 
-                        *frame_map.get_mut(&reading.mac).unwrap() = msg_reading;
+                        *frame_map.get_mut(&key).unwrap() = msg_reading;
                     }
                     None => {
-                        frame_map.insert(reading.mac.clone(), msg_reading);
-                        println!("Added new client with src_mac: {} (time: {})", reading.mac.clone(), reading.time.clone());
+                        frame_map.insert(key, msg_reading);
+                        println!("Added new client with addr: {} src_mac: {} (time: {})", addr, reading.mac.clone(), reading.time.clone());
                     }
                 }
 
@@ -127,6 +128,8 @@ async fn main() {
                     println!("Could not determine the number of frames in compressed container from {:?} with size: {:?}.", addr, decompressed_data.len());
                     continue;
                 }
+
+                // println!("Frames in container: {:?} from {}", frame_count, addr);
 
                 for i in 0 .. frame_count {
                     let protobuf_size = decompressed_data[csi::COMPRESSED_CSI_FRAME_SIZE * i] as usize;
@@ -145,35 +148,44 @@ async fn main() {
                     let mut reading = msg_reading.reading.clone();
                     let sequence_identifier = reading.sequence_identifier;
 
-                    match frame_map.get(&reading.mac) {
-                        Some(frame) => {
+                    let key = format!("{}/{}", reading.mac.clone(), reading.antenna.clone());
+
+                    match frame_map.get(&key) {
+                        Some(stored_frame) => {
                             // Get interval
-                            let ret_sequence: i32 = i32::try_from(frame.reading.sequence_identifier).ok().unwrap();
-                            if ret_sequence > sequence_identifier {
-                                // Wraparound has occurred. Get diff minus u16 max.
-                                let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
-                                reading.interval = sequence_identifier + ret_diff_from_max;
-                            } else {
+                            let ret_sequence: i32 = i32::try_from(stored_frame.reading.sequence_identifier).ok().unwrap();
+                            // if ret_sequence > sequence_identifier {
+                            //     // Wraparound has occurred. Get diff minus u16 max.
+                            //     println!("wraparound check is fuck");
+                            //     let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+                            //     reading.interval = sequence_identifier + ret_diff_from_max;
+                            // } else {
+                            //     reading.interval = sequence_identifier - ret_sequence;
+                            // }
+
+                            // if ret_sequence > sequence_identifier {
+                            //     // Wraparound has occurred. Get diff minus u16 max.
+                            //     // println!("wraparound check is fuck");
+                            //     let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+                            //     reading.interval = sequence_identifier + ret_diff_from_max;
+                            //     println!("{:#?}", reading);
+                            // } else {
                                 reading.interval = sequence_identifier - ret_sequence;
-                            }
+                            // }
 
                             // Get PCC
                             let new_matrix = msg_reading.csi_matrix.clone();
-                            let corr = csi::get_correlation_coefficient(new_matrix, &frame.csi_matrix).unwrap();
+                            let corr = csi::get_correlation_coefficient(new_matrix, &stored_frame.csi_matrix).unwrap();
 
                             reading.correlation_coefficient = corr;
 
-                            *frame_map.get_mut(&reading.mac).unwrap() = msg_reading;
+                            *frame_map.get_mut(&key).unwrap() = msg_reading;
                         }
                         None => {
-                            frame_map.insert(reading.mac.clone(), msg_reading);
-                            println!("Added new client with src_mac: {} (time: {})", reading.mac.clone(), reading.time.clone());
+                            frame_map.insert(key, msg_reading);
+                            println!("Added new client with addr: {} src_mac: {} (time: {})", addr, reading.mac.clone(), reading.time.clone());
                         }
                     }
-
-                    // if reading.mac == "0x69" {
-                    //     println!("{:#?}", reading);
-                    // }
 
                     write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
                 }
