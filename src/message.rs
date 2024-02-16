@@ -43,7 +43,7 @@ pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; UDP_MESSAGE_SIZE], usize, st
     Ok((buf, len, addr))
 }
 
-pub fn recv_message(socket: &UdpSocket) -> Result<MessageData, RecvMessageError> {
+pub fn recv(socket: &UdpSocket) -> Result<MessageData, RecvMessageError> {
     let Ok((recv_buf, payload_size, addr)) = message::recv_buf(&socket) else {
         Err(RecvMessageError::SocketRecvError())
     };
@@ -60,7 +60,7 @@ pub fn recv_message(socket: &UdpSocket) -> Result<MessageData, RecvMessageError>
     })
 }
 
-pub fn handle_message(m: MessageData) -> Result<WriteQuery, RecvMessageError> {
+pub fn handle(m: MessageData) -> Result<WriteQuery, RecvMessageError> {
     match m.format {
         MessageType::Telemetry => message::handle_telemetry_message(m),
         MessageType::CSI => message::handle_csi_message(m),

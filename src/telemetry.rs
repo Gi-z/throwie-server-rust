@@ -8,7 +8,7 @@ use telemetrymsg::TelemetryMessage;
 
 use crate::error;
 
-pub const SENSOR_TELEMETRY_MEASUREMENT: &str = "telemetry";
+// pub const SENSOR_TELEMETRY_MEASUREMENT: &str = "telemetry";
 
 #[derive(InfluxDbWriteable)]
 pub struct TelemetryReading {
@@ -29,7 +29,7 @@ pub fn parse_telemetry_protobuf(expected_protobuf: &[u8]) -> Result<TelemetryMes
 
 pub fn get_reading(msg: &TelemetryMessage) -> Result<TelemetryReading, error::RecvMessageError> {
     let timestamp_us = u128::try_from(msg.timestamp.unwrap()).unwrap();
-    let timestamp = Timestamp::Microseconds(timestamp_us).into();
+    let time = Timestamp::Microseconds(timestamp_us).into();
 
     let message_type = msg.message_type.unwrap().enum_value().unwrap() as i8;
     let current_sequence_identifier = msg.current_sequence_identifier.unwrap() as i16;
@@ -44,14 +44,14 @@ pub fn get_reading(msg: &TelemetryMessage) -> Result<TelemetryReading, error::Re
     // println!("Received telemetry message type: {} and device_type: {}.", message_type, device_type);
 
     Ok(TelemetryReading {
-        time: timestamp,
-        message_type: message_type,
-        current_sequence_identifier: current_sequence_identifier,
-        uptime_ms: uptime_ms,
+        time,
+        message_type,
+        current_sequence_identifier,
+        uptime_ms,
 
-        device_mac: device_mac,
-        version: version,
-        device_type: device_type,
-        is_eth: is_eth
+        device_mac,
+        version,
+        device_type,
+        is_eth
     })
 }
