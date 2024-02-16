@@ -1,12 +1,12 @@
-use thiserror::Error;
-
-use influxdb::{Timestamp, WriteQuery};
+use influxdb::Timestamp;
 use influxdb::InfluxDbWriteable;
 
 use protobuf::Message;
 
 include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
 use telemetrymsg::TelemetryMessage;
+
+use crate::error;
 
 pub const SENSOR_TELEMETRY_MEASUREMENT: &str = "telemetry";
 
@@ -23,11 +23,11 @@ pub struct TelemetryReading {
     #[influxdb(tag)] is_eth: bool,
 }
 
-pub fn parse_telemetry_message(expected_protobuf: &[u8]) -> Result<TelemetryMessage, protobuf::Error>  {
+pub fn parse_telemetry_protobuf(expected_protobuf: &[u8]) -> Result<TelemetryMessage, protobuf::Error>  {
     TelemetryMessage::parse_from_bytes(expected_protobuf)
 }
 
-pub fn get_reading(msg: &TelemetryMessage) -> TelemetryReading {
+pub fn get_reading(msg: &TelemetryMessage) -> Result<TelemetryReading, error::RecvMessageError> {
     let timestamp_us = u128::try_from(msg.timestamp.unwrap()).unwrap();
     let timestamp = Timestamp::Microseconds(timestamp_us).into();
 
@@ -43,7 +43,7 @@ pub fn get_reading(msg: &TelemetryMessage) -> TelemetryReading {
     // println!("Received telemetry message type: {} from device: {} and device_type: {} with uptime: {}.", message_type, device_mac, device_type, uptime_ms);
     // println!("Received telemetry message type: {} and device_type: {}.", message_type, device_type);
 
-    TelemetryReading {
+    Ok(TelemetryReading {
         time: timestamp,
         message_type: message_type,
         current_sequence_identifier: current_sequence_identifier,
@@ -53,5 +53,5 @@ pub fn get_reading(msg: &TelemetryMessage) -> TelemetryReading {
         version: version,
         device_type: device_type,
         is_eth: is_eth
-    }
+    })
 }

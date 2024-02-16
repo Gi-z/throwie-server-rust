@@ -1,13 +1,195 @@
+use std::net::{SocketAddr, UdpSocket};
+use crate::{csi, message, telemetry};
 
+use crate::error::RecvMessageError;
 
-pub fn parse_telemetry_message(expected_payload: &[u8]) -> Result<CSIMessage, protobuf::Error>  {
-    CSIMessage::parse_from_bytes(expected_protobuf)
+use influxdb::{WriteQuery, InfluxDbWriteable};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+
+pub const UDP_HOST_ADDR: &str = "0.0.0.0";
+pub const UDP_MESSAGE_SIZE: usize = 2000;
+pub const UDP_SERVER_PORT: u16 = 6969;
+
+#[derive(IntoPrimitive, TryFromPrimitive)]
+#[repr(u8)]
+pub enum MessageType {
+    Telemetry = 0x01,
+    CSI = 0x02,
+    CSICompressed = 0x03
+}
+pub struct MessageData {
+    format: MessageType,
+    addr: SocketAddr,
+    payload: &'static[u8]
 }
 
-pub fn parse_csi_message(expected_payload: &[u8]) -> Result<CSIMessage, protobuf::Error>  {
-    CSIMessage::parse_from_bytes(expected_protobuf)
+pub fn open_socket() -> UdpSocket {
+    match UdpSocket::bind((UDP_HOST_ADDR, UDP_SERVER_PORT)) {
+        Ok(sock) => {
+            println!("Successfully bound port {}.", UDP_SERVER_PORT);
+            sock
+        },
+        Err(error) => panic!("Error binding port {:?}: {:?}", UDP_SERVER_PORT, error)
+    }
 }
 
-pub fn parse_compressed_csi_message(expected_payload: &[u8]) -> Result<CSIMessage, protobuf::Error>  {
-    CSIMessage::parse_from_bytes(expected_protobuf)
+pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; UDP_MESSAGE_SIZE], usize, std::net::SocketAddr), RecvMessageError> {
+    let mut buf = [0; UDP_MESSAGE_SIZE];
+    let recv_result = socket.recv_from(&mut buf);
+    let Ok((len, addr)) = recv_result else {
+        Err(RecvMessageError::SocketRecvError())
+    };
+
+    Ok((buf, len, addr))
+}
+
+pub fn recv_message(socket: &UdpSocket) -> Result<MessageData, RecvMessageError> {
+    let Ok((recv_buf, payload_size, addr)) = message::recv_buf(&socket) else {
+        Err(RecvMessageError::SocketRecvError())
+    };
+
+    let payload = &recv_buf[ 1 .. payload_size ];
+    let Ok(format) = MessageType::try_from(recv_buf[0]) else {
+        Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
+    };
+
+    Ok(MessageData {
+        format,
+        addr,
+        payload
+    })
+}
+
+pub fn handle_message(m: MessageData) -> Result<WriteQuery, RecvMessageError> {
+    match m.format {
+        MessageType::Telemetry => message::handle_telemetry_message(m),
+        MessageType::CSI => message::handle_csi_message(m),
+        MessageType::CSICompressed => message::handle_compressed_csi_message(m)
+    }
+}
+
+pub fn handle_telemetry_message(message: MessageData) -> Result<WriteQuery, RecvMessageError> {
+    let reading = parse_telemetry_message(&message.payload)?;
+    Ok(reading.into_query(telemetry::SENSOR_TELEMETRY_MEASUREMENT))
+} 
+
+fn parse_telemetry_message(expected_payload: &[u8]) -> Result<telemetry::TelemetryReading, RecvMessageError>  {
+    let protobuf_parse_result = telemetry::parse_telemetry_protobuf(expected_payload)?;
+    telemetry::get_reading(&protobuf_parse_result)
+}
+
+pub fn handle_csi_message(message: MessageData) -> Result<WriteQuery, RecvMessageError> {
+    // println!("fuck");
+    let mut msg_reading = parse_csi_message(&message.payload)?;
+    let mut reading = msg_reading.reading.clone();
+    let sequence_identifier = reading.sequence_identifier;
+
+    let key = format!("{}/{}", reading.mac.clone(), reading.antenna.clone());
+
+    // match frame_map.get(&key) {
+    //     Some(stored_frame) => {
+    //         // Get interval
+    //         let ret_sequence: i32 = i32::try_from(stored_frame.reading.sequence_identifier).ok().unwrap();
+    //         if ret_sequence > sequence_identifier {
+    //             // Wraparound has occurred. Get diff minus u16 max.
+    //             let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+    //             reading.interval = sequence_identifier + ret_diff_from_max;
+    //         } else {
+    //             reading.interval = sequence_identifier - ret_sequence;
+    //         }
+    //
+    //         // Get PCC
+    //         let new_matrix = msg_reading.csi_matrix.clone();
+    //         let corr = csi::get_correlation_coefficient(new_matrix, &stored_frame.csi_matrix).unwrap();
+    //
+    //         reading.correlation_coefficient = corr;
+    //
+    //         *frame_map.get_mut(&key).unwrap() = msg_reading;
+    //     }
+    //     None => {
+    //         frame_map.insert(key, msg_reading);
+    //         println!("Added new client with addr: {} src_mac: {} (time: {})", addr, reading.mac.clone(), reading.time.clone());
+    //     }
+    // }
+
+    Ok(reading.into_query(csi::CSI_METRICS_MEASUREMENT))
+}
+
+fn parse_csi_message(expected_payload: &[u8]) -> Result<csi::CSIMessageReading, RecvMessageError>  {
+    let protobuf_parse_result = csi::parse_csi_protobuf(expected_payload)?;
+    csi::get_reading(&protobuf_parse_result)
+}
+
+pub fn handle_compressed_csi_message(message: MessageData) -> Result<Vec<WriteQuery>, RecvMessageError> {
+    let results: Vec<WriteQuery> = Vec::new();
+
+    // batch of readings
+    let decompressed_data = inflate::inflate_bytes_zlib(&message.payload).unwrap();
+    let frame_count = decompressed_data.len() / csi::COMPRESSED_CSI_FRAME_SIZE;
+
+    if (decompressed_data.len() % csi::COMPRESSED_CSI_FRAME_SIZE) > 0 {
+        println!("Could not determine the number of frames in compressed container from {:?} with size: {:?}.", message.addr, decompressed_data.len());
+        RecvMessageError::MessageDecompressionError()
+    }
+
+    println!("Frames in container: {:?} from {}", frame_count, message.addr);
+
+    for i in 0 .. frame_count {
+        let protobuf_size = decompressed_data[csi::COMPRESSED_CSI_FRAME_SIZE * i] as usize;
+
+        let protobuf_start = (csi::COMPRESSED_CSI_FRAME_SIZE * i) + 1;
+        let protobuf_end = protobuf_start + protobuf_size;
+        let protobuf_contents = &decompressed_data[ protobuf_start .. protobuf_end ];
+
+        let Ok(msg) = parse_csi_message(protobuf_contents) else {
+            println!("Invalid frame in decompressed array.");
+            continue
+        };
+
+        let reading = msg.reading.clone();
+        let sequence_identifier = reading.sequence_identifier;
+
+        let key = format!("{}/{}", reading.mac.clone(), reading.antenna.clone());
+
+        // match frame_map.get(&key) {
+        //     Some(stored_frame) => {
+        //         // Get interval
+        //         let ret_sequence: i32 = i32::try_from(stored_frame.reading.sequence_identifier).ok().unwrap();
+        //         // if ret_sequence > sequence_identifier {
+        //         //     // Wraparound has occurred. Get diff minus u16 max.
+        //         //     println!("wraparound check is fuck");
+        //         //     let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+        //         //     reading.interval = sequence_identifier + ret_diff_from_max;
+        //         // } else {
+        //         //     reading.interval = sequence_identifier - ret_sequence;
+        //         // }
+        //
+        //         // if ret_sequence > sequence_identifier {
+        //         //     // Wraparound has occurred. Get diff minus u16 max.
+        //         //     // println!("wraparound check is fuck");
+        //         //     let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+        //         //     reading.interval = sequence_identifier + ret_diff_from_max;
+        //         //     println!("{:#?}", reading);
+        //         // } else {
+        //             reading.interval = sequence_identifier - ret_sequence;
+        //         // }
+        //
+        //         // Get PCC
+        //         let new_matrix = msg_reading.csi_matrix.clone();
+        //         let corr = csi::get_correlation_coefficient(new_matrix, &stored_frame.csi_matrix).unwrap();
+        //
+        //         reading.correlation_coefficient = corr;
+        //
+        //         *frame_map.get_mut(&key).unwrap() = msg_reading;
+        //     }
+        //     None => {
+        //         frame_map.insert(key, msg_reading);
+        //         println!("Added new client with addr: {} src_mac: {} (time: {})", addr, reading.mac.clone(), reading.time.clone());
+        //     }
+        // }
+        //
+        // write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
+    }
+
+    Ok(results)
 }
