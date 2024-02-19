@@ -1,14 +1,10 @@
 use influxdb::Timestamp;
 use influxdb::InfluxDbWriteable;
+use prost::{DecodeError, Message};
 
-use protobuf::Message;
+use crate::throwie::TelemetryMessage;
 
-include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
-use telemetrymsg::TelemetryMessage;
-
-use crate::error;
-
-// pub const SENSOR_TELEMETRY_MEASUREMENT: &str = "telemetry";
+pub const SENSOR_TELEMETRY_MEASUREMENT: &str = "telemetry";
 
 #[derive(InfluxDbWriteable)]
 pub struct TelemetryReading {
@@ -23,35 +19,37 @@ pub struct TelemetryReading {
     #[influxdb(tag)] is_eth: bool,
 }
 
-pub fn parse_telemetry_protobuf(expected_protobuf: &[u8]) -> Result<TelemetryMessage, protobuf::Error>  {
-    TelemetryMessage::parse_from_bytes(expected_protobuf)
+impl TelemetryReading {
+    pub fn new(msg: &TelemetryMessage) -> Self{
+        let timestamp_us = u128::try_from(msg.timestamp).unwrap();
+        let time = Timestamp::Microseconds(timestamp_us).into();
+
+        let message_type = msg.message_type as i8;
+        let current_sequence_identifier = msg.current_sequence_identifier as i16;
+        let uptime_ms = msg.uptime_ms;
+
+        let device_mac = format!("0x{:X}", &msg.device_mac[5]);
+        let version = msg.version.clone();
+        let device_type = msg.device_type as i8;
+        let is_eth = msg.is_eth;
+
+        Self {
+            time,
+            message_type,
+            current_sequence_identifier,
+            uptime_ms,
+            device_mac,
+            version,
+            device_type,
+            is_eth,
+        }
+    }
 }
 
-pub fn get_reading(msg: &TelemetryMessage) -> Result<TelemetryReading, error::RecvMessageError> {
-    let timestamp_us = u128::try_from(msg.timestamp.unwrap()).unwrap();
-    let time = Timestamp::Microseconds(timestamp_us).into();
+pub fn parse_telemetry_protobuf(expected_protobuf: &[u8]) -> Result<TelemetryMessage, DecodeError> {
+    TelemetryMessage::decode(expected_protobuf)
+}
 
-    let message_type = msg.message_type.unwrap().enum_value().unwrap() as i8;
-    let current_sequence_identifier = msg.current_sequence_identifier.unwrap() as i16;
-    let uptime_ms = msg.uptime_ms.unwrap();
-
-    let device_mac = format!("0x{:X}", msg.device_mac.clone().unwrap()[5]);
-    let version = msg.version.clone().unwrap();
-    let device_type = msg.device_type.unwrap().enum_value().unwrap() as i8;
-    let is_eth = msg.is_eth.unwrap();
-
-    // println!("Received telemetry message type: {} from device: {} and device_type: {} with uptime: {}.", message_type, device_mac, device_type, uptime_ms);
-    // println!("Received telemetry message type: {} and device_type: {}.", message_type, device_type);
-
-    Ok(TelemetryReading {
-        time,
-        message_type,
-        current_sequence_identifier,
-        uptime_ms,
-
-        device_mac,
-        version,
-        device_type,
-        is_eth
-    })
+pub fn get_reading(msg: &TelemetryMessage) -> TelemetryReading {
+    TelemetryReading::new(msg)
 }

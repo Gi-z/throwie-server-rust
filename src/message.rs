@@ -1,10 +1,12 @@
 use std::net::{SocketAddr, UdpSocket};
-use crate::{csi, message, telemetry};
+use crate::{csi, telemetry};
 
 use crate::error::RecvMessageError;
 
 use influxdb::{WriteQuery, InfluxDbWriteable};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use prost::DecodeError;
+use crate::telemetry::TelemetryReading;
 
 pub const UDP_HOST_ADDR: &str = "0.0.0.0";
 pub const UDP_MESSAGE_SIZE: usize = 2000;
@@ -35,22 +37,19 @@ pub fn open_socket() -> UdpSocket {
 
 pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; UDP_MESSAGE_SIZE], usize, std::net::SocketAddr), RecvMessageError> {
     let mut buf = [0; UDP_MESSAGE_SIZE];
-    let recv_result = socket.recv_from(&mut buf);
-    let Ok((len, addr)) = recv_result else {
-        Err(RecvMessageError::SocketRecvError())
-    };
+    let (len, addr) = socket.recv_from(&mut buf)
+        .expect("Didn't receive data");
 
     Ok((buf, len, addr))
 }
 
-pub fn recv(socket: &UdpSocket) -> Result<MessageData, RecvMessageError> {
-    let Ok((recv_buf, payload_size, addr)) = message::recv_buf(&socket) else {
-        Err(RecvMessageError::SocketRecvError())
-    };
+pub fn recv_message(socket: &UdpSocket) -> Result<MessageData, RecvMessageError> {
+    let (recv_buf, payload_size, addr) = recv_buf(&socket)?;
 
-    let payload = &recv_buf[ 1 .. payload_size ];
+    let payload = recv_buf[ 1 .. payload_size ];
+
     let Ok(format) = MessageType::try_from(recv_buf[0]) else {
-        Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
+        return Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
     };
 
     Ok(MessageData {
@@ -60,28 +59,28 @@ pub fn recv(socket: &UdpSocket) -> Result<MessageData, RecvMessageError> {
     })
 }
 
-pub fn handle(m: MessageData) -> Result<WriteQuery, RecvMessageError> {
+pub fn handle_message(m: MessageData) -> Result<Vec<WriteQuery>, RecvMessageError> {
     match m.format {
-        MessageType::Telemetry => message::handle_telemetry_message(m),
-        MessageType::CSI => message::handle_csi_message(m),
-        MessageType::CSICompressed => message::handle_compressed_csi_message(m)
+        MessageType::Telemetry => handle_telemetry(m),
+        MessageType::CSI => handle_csi(m),
+        MessageType::CSICompressed => handle_compressed_csi(m)
     }
 }
 
-pub fn handle_telemetry_message(message: MessageData) -> Result<WriteQuery, RecvMessageError> {
-    let reading = parse_telemetry_message(&message.payload)?;
-    Ok(reading.into_query(telemetry::SENSOR_TELEMETRY_MEASUREMENT))
+pub fn handle_telemetry(message: MessageData) -> Result<Vec<WriteQuery>, RecvMessageError> {
+    let reading = parse_telemetry(&message.payload)?;
+    Ok(vec![reading.into_query(telemetry::SENSOR_TELEMETRY_MEASUREMENT)])
 } 
 
-fn parse_telemetry_message(expected_payload: &[u8]) -> Result<telemetry::TelemetryReading, RecvMessageError>  {
+fn parse_telemetry(expected_payload: &[u8]) -> Result<TelemetryReading, RecvMessageError> {
     let protobuf_parse_result = telemetry::parse_telemetry_protobuf(expected_payload)?;
-    telemetry::get_reading(&protobuf_parse_result)
+    Ok(telemetry::get_reading(&protobuf_parse_result))
 }
 
-pub fn handle_csi_message(message: MessageData) -> Result<WriteQuery, RecvMessageError> {
+pub fn handle_csi(message: MessageData) -> Result<Vec<WriteQuery>, RecvMessageError> {
     // println!("fuck");
-    let mut msg_reading = parse_csi_message(&message.payload)?;
-    let mut reading = msg_reading.reading.clone();
+    let mut reading = parse_csi(&message.payload)?;
+    // let mut reading = msg_reading.reading.clone();
     let sequence_identifier = reading.sequence_identifier;
 
     let key = format!("{}/{}", reading.mac.clone(), reading.antenna.clone());
@@ -112,16 +111,16 @@ pub fn handle_csi_message(message: MessageData) -> Result<WriteQuery, RecvMessag
     //     }
     // }
 
-    Ok(reading.into_query(csi::CSI_METRICS_MEASUREMENT))
+    Ok(vec![reading.into_query(csi::CSI_METRICS_MEASUREMENT)])
 }
 
-fn parse_csi_message(expected_payload: &[u8]) -> Result<csi::CSIMessageReading, RecvMessageError>  {
+fn parse_csi(expected_payload: &[u8]) -> Result<csi::CSIReading, RecvMessageError>  {
     let protobuf_parse_result = csi::parse_csi_protobuf(expected_payload)?;
     csi::get_reading(&protobuf_parse_result)
 }
 
-pub fn handle_compressed_csi_message(message: MessageData) -> Result<Vec<WriteQuery>, RecvMessageError> {
-    let results: Vec<WriteQuery> = Vec::new();
+pub fn handle_compressed_csi(message: MessageData) -> Result<Vec<WriteQuery>, RecvMessageError> {
+    let mut write_queries: Vec<WriteQuery> = Vec::new();
 
     // batch of readings
     let decompressed_data = inflate::inflate_bytes_zlib(&message.payload).unwrap();
@@ -129,7 +128,7 @@ pub fn handle_compressed_csi_message(message: MessageData) -> Result<Vec<WriteQu
 
     if (decompressed_data.len() % csi::COMPRESSED_CSI_FRAME_SIZE) > 0 {
         println!("Could not determine the number of frames in compressed container from {:?} with size: {:?}.", message.addr, decompressed_data.len());
-        RecvMessageError::MessageDecompressionError()
+        return Err(RecvMessageError::MessageDecompressionError())
     }
 
     println!("Frames in container: {:?} from {}", frame_count, message.addr);
@@ -141,12 +140,13 @@ pub fn handle_compressed_csi_message(message: MessageData) -> Result<Vec<WriteQu
         let protobuf_end = protobuf_start + protobuf_size;
         let protobuf_contents = &decompressed_data[ protobuf_start .. protobuf_end ];
 
-        let Ok(msg) = parse_csi_message(protobuf_contents) else {
+        let Ok(msg) = parse_csi(protobuf_contents) else {
             println!("Invalid frame in decompressed array.");
             continue
         };
 
-        let reading = msg.reading.clone();
+        // let reading = msg.reading.clone();
+        let reading = msg;
         let sequence_identifier = reading.sequence_identifier;
 
         let key = format!("{}/{}", reading.mac.clone(), reading.antenna.clone());
@@ -188,8 +188,8 @@ pub fn handle_compressed_csi_message(message: MessageData) -> Result<Vec<WriteQu
         //     }
         // }
         //
-        // write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
+        write_queries.push(reading.into_query(csi::CSI_METRICS_MEASUREMENT));
     }
 
-    Ok(results)
+    Ok(write_queries)
 }
