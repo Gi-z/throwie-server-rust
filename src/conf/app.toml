@@ -15,10 +15,6 @@ address = "csi-hub"
 port = 8086
 #username = "influx"
 write_batch_size = 1000
-
-[influx_data]
 database = "influx"
 csi_metrics_measurement = "csi_metrics"
 sensor_telemetry_measurement = "telemetry"
-
-[servers]

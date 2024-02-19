@@ -13,12 +13,12 @@ use ndarray_stats;
 use prost::{DecodeError, Message};
 use crate::error::RecvMessageError;
 
-// pub const SINGLE_CSI_FRAME_SIZE: usize = 145;
-// pub const COMPRESSED_CSI_FRAME_SIZE: usize = SINGLE_CSI_FRAME_SIZE + 1;
+pub const SINGLE_CSI_FRAME_SIZE: usize = 145;
+pub const COMPRESSED_CSI_FRAME_SIZE: usize = SINGLE_CSI_FRAME_SIZE + 1;
 
-// pub const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
+pub const CSI_METRICS_MEASUREMENT: &str = "csi_metrics";
 
-// const FILTER_SUBARRIERS: [u8; 13] = [0, 1, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37];
+const FILTER_SUBARRIERS: [u8; 13] = [0, 1, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37];
 const REQUIRED_SUBCARRIERS: [usize; 51] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
 
 #[derive(Clone, InfluxDbWriteable, Debug)]

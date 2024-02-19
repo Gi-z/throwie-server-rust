@@ -1,6 +1,10 @@
-use config::{Config, ConfigError, Environment, File};
+use std::fs;
+use std::process::exit;
 use serde_derive::Deserialize;
-use std::env;
+
+use toml;
+
+const CONFIG_PATH: &str = "src/conf/app.toml";
 
 #[derive(Debug, Deserialize)]
 #[allow(unused)]
@@ -23,11 +27,7 @@ struct Influx {
     address: String,
     port: i16,
     write_batch_size: i32,
-}
 
-#[derive(Debug, Deserialize)]
-#[allow(unused)]
-struct InfluxData {
     database: String,
     csi_metrics_measurement: String,
     sensor_telemetry_measurement: String,
@@ -39,18 +39,28 @@ pub struct AppConfig {
     message: Message,
     csi: CSI,
     influx: Influx,
-    influx_data: InfluxData,
 }
 
 impl AppConfig {
-    pub fn new() -> Result<Self, ConfigError> {
-        // let run_mode = env::var("RUN_MODE").unwrap_or_else(|_| "development".into());
+    pub fn new() -> Self{
+        let contents = match fs::read_to_string(CONFIG_PATH) {
+            Ok(c) => c,
+            Err(_) => {
+                eprintln!("Could not read config file: `{}`", CONFIG_PATH);
+                exit(1);
+            }
+        };
 
-        let s = Config::builder()
-            .add_source(File::with_name("src/conf/app.toml"))
-            .build()?;
+        match toml::from_str(&contents) {
+            Ok(d) => d,
+            Err(_) => {
+                eprintln!("Unable to parse config file: `{}`", CONFIG_PATH);
+                exit(1);
+            }
+        }
+    }
 
-        // You can deserialize (and thus freeze) the entire configuration as
-        s.try_deserialize()
+    fn get_influx() -> Influx{
+
     }
 }

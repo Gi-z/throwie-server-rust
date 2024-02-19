@@ -1,3 +1,6 @@
+extern crate inflate;
+extern crate num_enum;
+
 use std::net::{SocketAddr, UdpSocket};
 use crate::{csi, telemetry};
 
@@ -5,14 +8,12 @@ use crate::error::RecvMessageError;
 
 use influxdb::{WriteQuery, InfluxDbWriteable};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use prost::DecodeError;
-use crate::telemetry::TelemetryReading;
 
 pub const UDP_HOST_ADDR: &str = "0.0.0.0";
 pub const UDP_MESSAGE_SIZE: usize = 2000;
 pub const UDP_SERVER_PORT: u16 = 6969;
 
-#[derive(IntoPrimitive, TryFromPrimitive)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug)]
 #[repr(u8)]
 pub enum MessageType {
     Telemetry = 0x01,
@@ -22,7 +23,7 @@ pub enum MessageType {
 pub struct MessageData {
     format: MessageType,
     addr: SocketAddr,
-    payload: &'static[u8]
+    payload: Vec<u8>
 }
 
 pub fn open_socket() -> UdpSocket {
@@ -44,9 +45,9 @@ pub fn recv_buf(socket: &UdpSocket) -> Result<([u8; UDP_MESSAGE_SIZE], usize, st
 }
 
 pub fn recv_message(socket: &UdpSocket) -> Result<MessageData, RecvMessageError> {
-    let (recv_buf, payload_size, addr) = recv_buf(&socket)?;
+    let (mut recv_buf, payload_size, addr) = recv_buf(&socket)?;
 
-    let payload = recv_buf[ 1 .. payload_size ];
+    let payload = recv_buf[ 1 .. payload_size ].to_vec();
 
     let Ok(format) = MessageType::try_from(recv_buf[0]) else {
         return Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
@@ -72,13 +73,12 @@ pub fn handle_telemetry(message: MessageData) -> Result<Vec<WriteQuery>, RecvMes
     Ok(vec![reading.into_query(telemetry::SENSOR_TELEMETRY_MEASUREMENT)])
 } 
 
-fn parse_telemetry(expected_payload: &[u8]) -> Result<TelemetryReading, RecvMessageError> {
+fn parse_telemetry(expected_payload: &[u8]) -> Result<telemetry::TelemetryReading, RecvMessageError> {
     let protobuf_parse_result = telemetry::parse_telemetry_protobuf(expected_payload)?;
     Ok(telemetry::get_reading(&protobuf_parse_result))
 }
 
 pub fn handle_csi(message: MessageData) -> Result<Vec<WriteQuery>, RecvMessageError> {
-    // println!("fuck");
     let mut reading = parse_csi(&message.payload)?;
     // let mut reading = msg_reading.reading.clone();
     let sequence_identifier = reading.sequence_identifier;
@@ -131,7 +131,7 @@ pub fn handle_compressed_csi(message: MessageData) -> Result<Vec<WriteQuery>, Re
         return Err(RecvMessageError::MessageDecompressionError())
     }
 
-    println!("Frames in container: {:?} from {}", frame_count, message.addr);
+    // println!("Frames in container: {:?} from {}", frame_count, message.addr);
 
     for i in 0 .. frame_count {
         let protobuf_size = decompressed_data[csi::COMPRESSED_CSI_FRAME_SIZE * i] as usize;
