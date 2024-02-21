@@ -3,14 +3,11 @@
 
 [message]
 address = "0.0.0.0"
-buffer_size = 2000
 port = 6969
-
-[csi]
-frame_size = 145
+csi_frame_size = 145
 
 [influx]
-protocol = "https"
+protocol = "http"
 address = "csi-hub"
 port = 8086
 #username = "influx"

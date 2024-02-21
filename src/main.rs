@@ -1,5 +1,8 @@
+use std::error::Error;
+
 mod csi;
-// mod conf;
+mod config;
+// mod config;
 mod db;
 mod error;
 mod message;
@@ -8,22 +11,15 @@ mod throwie {
     include!(concat!(env!("OUT_DIR"), "/throwie.rs"));
 }
 
-use crate::message::handle_message;
-
 #[tokio::main]
-async fn main() {
-    // let app_config = conf::appconfig::AppConfig::new();
+async fn main() -> Result<(), Box<dyn Error>>{
+    let conf = config::AppConfig::new();
 
     // InfluxDB client.
-    let mut client = db::InfluxClient::new();
-    // Open CSI UDP port.
-    let socket = message::open_socket();
+    let client = db::InfluxClient::new(conf.influx);
+    let mut server = message::MessageServer::new(conf.message, client);
 
     loop {
-        let Ok(message) = message::recv_message(&socket) else {
-            continue;
-        };
-
-        client.add_readings(handle_message(message).unwrap()).await;
+        server.get_message().await?;
     }
 }

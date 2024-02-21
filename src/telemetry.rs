@@ -4,8 +4,6 @@ use prost::{DecodeError, Message};
 
 use crate::throwie::TelemetryMessage;
 
-pub const SENSOR_TELEMETRY_MEASUREMENT: &str = "telemetry";
-
 #[derive(InfluxDbWriteable)]
 pub struct TelemetryReading {
     time: Timestamp,

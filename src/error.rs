@@ -3,9 +3,6 @@ use prost::DecodeError;
 
 use thiserror::Error;
 
-use crate::throwie::CsiMessage;
-use crate::throwie::TelemetryMessage;
-
 #[derive(Error, Debug)]
 pub enum RecvMessageError {
     #[error("socket.recv_from returned error.")]

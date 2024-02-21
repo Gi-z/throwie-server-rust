@@ -1,37 +1,36 @@
 extern crate influxdb;
 
 use influxdb::{Client, WriteQuery};
-
-// use crate::conf::appconfig::AppConfig;
-const MESSAGE_BATCH_SIZE: usize = 1000;
+use crate::config;
 
 pub(crate) struct InfluxClient {
-    // config: AppConfig,
+    batch: Vec<WriteQuery>,
+    pub config: config::Influx,
     client: Client,
-    batch: Vec<WriteQuery>
 }
 
 impl InfluxClient {
-    pub fn new() -> Self{
-        // let url = &format!("{}://{}:{}",
-        //   &config.influx.protocol,
-        //   &config.influx.address,
-        //   &config.influx.port
-        // );
-        // let database = &config.influx.database;
+    pub fn new(config: config::Influx) -> Self{
+        let url = &format!("{}://{}:{}",
+          &config.protocol,
+          &config.address,
+          &config.port
+        );
+        let database = &String::from(&config.database);
+
         let batch: Vec<WriteQuery> = Vec::new();
 
         Self{
             batch,
-            // config,
-            client: Self::get_client()
+            config,
+            client: Self::get_client(url, database)
         }
     }
 
     pub async fn add_readings(&mut self, readings: Vec<WriteQuery>) {
         self.batch.extend(readings);
 
-        if self.batch.len() > MESSAGE_BATCH_SIZE {
+        if self.batch.len() > self.config.write_batch_size as usize {
             self.write_batch().await;
             self.batch.clear();
         }
@@ -45,10 +44,7 @@ impl InfluxClient {
         assert!(write_result.is_ok(), "Write result was not okay");
     }
 
-    // pub fn get_client(url: &str, database: &str) -> Client {
-    //     Client::new(url, database)
-    // }
-    pub fn get_client() -> Client {
-        Client::new("http://csi-hub:8086", "influx")
+    pub fn get_client(url: &str, database: &str) -> Client {
+        Client::new(url, database)
     }
 }
