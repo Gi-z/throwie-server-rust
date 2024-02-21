@@ -1,7 +1,5 @@
 use ndarray_stats::CorrelationExt;
 
-use num;
-
 use influxdb::Timestamp;
 use influxdb::InfluxDbWriteable;
 

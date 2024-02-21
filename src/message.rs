@@ -69,7 +69,7 @@ impl MessageServer {
     }
 
     pub fn recv_message(&self) -> Result<MessageData, RecvMessageError> {
-        let (mut recv_buf, payload_size, addr) = self.recv_buf()?;
+        let (recv_buf, payload_size, addr) = self.recv_buf()?;
 
         let payload = recv_buf[ 1 .. payload_size ].to_vec();
 
