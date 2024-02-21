@@ -10,7 +10,6 @@ const CONFIG_PATH: &str = "src/config/app.toml";
 #[allow(unused)]
 pub struct Message {
     pub address: String,
-    pub buffer_size: u32,
     pub csi_frame_size: i16,
     pub port: u16,
 }
