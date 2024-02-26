@@ -2,7 +2,7 @@ use influxdb::Timestamp;
 use influxdb::InfluxDbWriteable;
 use prost::{DecodeError, Message};
 
-use crate::throwie::TelemetryMessage;
+use crate::throwie::{CsiMessage, TelemetryMessage};
 
 #[derive(InfluxDbWriteable)]
 pub struct TelemetryReading {
@@ -45,7 +45,10 @@ impl TelemetryReading {
 }
 
 pub fn parse_telemetry_protobuf(expected_protobuf: &[u8]) -> Result<TelemetryMessage, DecodeError> {
-    TelemetryMessage::decode(expected_protobuf)
+    match TelemetryMessage::decode(expected_protobuf) {
+        Ok(T) => Ok(T),
+        Err(e) => Err(e),
+    }
 }
 
 pub fn get_reading(msg: &TelemetryMessage) -> TelemetryReading {

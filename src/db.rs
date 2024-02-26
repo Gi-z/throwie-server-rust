@@ -5,12 +5,13 @@ use crate::config;
 
 pub(crate) struct InfluxClient {
     batch: Vec<WriteQuery>,
-    pub config: config::Influx,
     client: Client,
 }
 
 impl InfluxClient {
-    pub fn new(config: config::Influx) -> Self{
+    pub fn new() -> Self{
+        let config = &config::get().lock().unwrap().influx;
+
         let url = &format!("{}://{}:{}",
           &config.protocol,
           &config.address,
@@ -22,7 +23,6 @@ impl InfluxClient {
 
         Self{
             batch,
-            config,
             client: Self::get_client(url, database)
         }
     }
@@ -30,7 +30,7 @@ impl InfluxClient {
     pub async fn add_readings(&mut self, readings: Vec<WriteQuery>) {
         self.batch.extend(readings);
 
-        if self.batch.len() > self.config.write_batch_size as usize {
+        if self.batch.len() > config::get().lock().unwrap().influx.write_batch_size as usize {
             self.write_batch().await;
             self.batch.clear();
         }

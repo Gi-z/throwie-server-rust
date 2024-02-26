@@ -54,7 +54,10 @@ impl CSIReading {
 }
 
 pub fn parse_csi_protobuf(expected_protobuf: &[u8]) -> Result<CsiMessage, DecodeError>  {
-    CsiMessage::decode(expected_protobuf)
+    match CsiMessage::decode(expected_protobuf) {
+        Ok(T) => Ok(T),
+        Err(e) => Err(e),
+    }
 }
 
 fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError> {
