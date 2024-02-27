@@ -3,7 +3,7 @@ extern crate num_enum;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use crate::{config, csi, telemetry};
 
 use crate::error::RecvMessageError;
@@ -14,6 +14,7 @@ use crate::csi::CSIReading;
 use crate::db::InfluxClient;
 
 use tokio::net::UdpSocket;
+use tokio::time::sleep;
 
 const UDP_MESSAGE_MAX_SIZE: usize = 2000;
 
@@ -110,6 +111,8 @@ impl MessageServer {
 
     pub async fn get_message(&mut self) -> Result<(), RecvMessageError> {
         let num_cpus = num_cpus::get();
+        println!("Running MessageServer on {} tasks.", num_cpus);
+        sleep(Duration::from_millis(1000));
 
         let host = self.host.clone();
         let port = self.port.clone();
@@ -141,6 +144,10 @@ impl MessageServer {
                         addr,
                         payload
                     };
+
+                    // let handled_message = self.handle_message(recv_message).unwrap();
+
+                    // self.db.add_readings(handled_message).await;
                 }
             }).await.expect("TODO: panic message");
         }

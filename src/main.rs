@@ -17,7 +17,5 @@ async fn main() -> Result<(), RecvMessageError> {
     let client = db::InfluxClient::new();
     let mut server = message::MessageServer::new(client);
 
-    server.get_message().await.expect("TODO: panic message");
-
-    Ok(())
+    server.get_message().await
 }
