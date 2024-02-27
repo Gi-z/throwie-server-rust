@@ -2,7 +2,7 @@ use influxdb::Timestamp;
 use influxdb::InfluxDbWriteable;
 use prost::{DecodeError, Message};
 
-use crate::throwie::{CsiMessage, TelemetryMessage};
+use crate::throwie::TelemetryMessage;
 
 #[derive(InfluxDbWriteable)]
 pub struct TelemetryReading {

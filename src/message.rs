@@ -2,7 +2,7 @@ extern crate inflate;
 extern crate num_enum;
 
 use std::collections::HashMap;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::time::{Instant, SystemTime};
 use crate::{config, csi, telemetry};
 
@@ -12,6 +12,8 @@ use influxdb::{WriteQuery, InfluxDbWriteable};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use crate::csi::CSIReading;
 use crate::db::InfluxClient;
+
+use tokio::net::UdpSocket;
 
 const UDP_MESSAGE_MAX_SIZE: usize = 2000;
 
@@ -41,23 +43,46 @@ pub struct MessageData {
 pub(crate) struct MessageServer {
     db: InfluxClient,
     frame_map: HashMap<String, i32>,
-    socket: UdpSocket,
+    // socket: UdpSocket,
+    host: String,
+    port: u16
+}
+
+fn open_reusable_socket(host: String, port: u16) -> UdpSocket {
+    let addr: SocketAddr = format!("{}:{}", host, port).parse().unwrap();
+    let udp_sock = socket2::Socket::new(
+        if addr.is_ipv4() {
+            socket2::Domain::IPV4
+        } else {
+            socket2::Domain::IPV6
+        },
+        socket2::Type::DGRAM,
+        None,
+    ).unwrap();
+    udp_sock.set_reuse_port(true).unwrap();
+    udp_sock.set_cloexec(true).unwrap();
+    udp_sock.set_nonblocking(true).unwrap();
+    udp_sock.bind(&socket2::SockAddr::from(addr)).unwrap();
+    let udp_sock: std::net::UdpSocket = udp_sock.into();
+    udp_sock.try_into().unwrap()
 }
 
 impl MessageServer {
 
     pub fn new(db: InfluxClient) -> Self{
         let config = &config::get().lock().unwrap().message;
-        let host = &config.address;
+        let host = config.address.clone();
         let port = config.port.clone();
 
-        let socket = Self::open_socket(host, port);
+        // let socket = Self::open_reusable_socket(host, port);
         let frame_map = HashMap::new();
 
         Self{
             db,
             frame_map,
-            socket,
+            // socket,
+            host,
+            port
         }
     }
 
@@ -65,39 +90,13 @@ impl MessageServer {
         config::get().lock().unwrap().influx.csi_metrics_measurement.clone()
     }
 
-    fn open_socket(host: &str, port: u16) -> UdpSocket {
-        match UdpSocket::bind((String::from(host), port)) {
-            Ok(sock) => {
-                println!("Successfully bound port {}.", port);
-                sock
-            },
-            Err(error) => panic!("Error binding port {:?}: {:?}", port, error)
-        }
-    }
-
-    pub fn recv_buf(&self) -> Result<([u8; UDP_MESSAGE_MAX_SIZE], usize, SocketAddr), RecvMessageError> {
-        let mut buf = [0; UDP_MESSAGE_MAX_SIZE];
-        let (len, addr) = self.socket.recv_from(&mut buf)
-            .expect("Didn't receive data");
-
-        Ok((buf, len, addr))
-    }
-
-    pub fn recv_message(&self) -> Result<MessageData, RecvMessageError> {
-        let (recv_buf, payload_size, addr) = self.recv_buf()?;
-
-        let payload = recv_buf[ 1 .. payload_size ].to_vec();
-
-        let Ok(format) = MessageType::try_from(recv_buf[0]) else {
-            return Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
-        };
-
-        Ok(MessageData {
-            format,
-            addr,
-            payload
-        })
-    }
+    // pub fn recv_buf(&self) -> Result<([u8; UDP_MESSAGE_MAX_SIZE], usize, SocketAddr), RecvMessageError> {
+    //     let mut buf = [0; UDP_MESSAGE_MAX_SIZE];
+    //     let (len, addr) = self.socket.recv_from(&mut buf)
+    //         .expect("Didn't receive data");
+    //
+    //     Ok((buf, len, addr))
+    // }
 
     // pub async fn get_message(&mut self) -> Result<(), RecvMessageError> {
     //     let message = self.recv_message()?;
@@ -109,19 +108,53 @@ impl MessageServer {
     // }
 
     pub async fn get_message(&mut self) -> Result<(), RecvMessageError> {
-        let recv_start = Instant::now();
-        let recv_message = self.recv_message()?;
-        let recv_time = recv_start.elapsed();
+        let num_cpus = num_cpus::get();
 
-        let handle_start = Instant::now();
-        let handled_message = self.handle_message(recv_message)?;
-        let handle_time = handle_start.elapsed();
+        let host = self.host.clone();
+        let port = self.port.clone();
 
-        println!("recv_time: {}us", recv_time.as_micros());
-        println!("handle_time: {}us", handle_time.as_micros());
+        for _ in 0..num_cpus {
+            tokio::spawn(async move {
+                let recv_start = Instant::now();
 
-        self.db.add_readings(handled_message).await;
+                let socket = open_reusable_socket(String::from("0.0.0.0"), port.clone());
+                let mut recv_buf = [0; UDP_MESSAGE_MAX_SIZE];
+                let (payload_size, addr) = socket.recv_from(&mut recv_buf)
+                    .await
+                    .expect("Didn't receive data");
 
+
+                let payload = recv_buf[ 1 .. payload_size ].to_vec();
+
+                let Ok(format) = MessageType::try_from(recv_buf[0]) else {
+                    return Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
+                };
+
+                let recv_message = MessageData {
+                    format,
+                    addr,
+                    payload
+                };
+
+                let recv_time = recv_start.elapsed();
+                println!("recv_time: {}us", recv_time.as_micros());
+
+                Ok(())
+            });
+        }
+        // let recv_start = Instant::now();
+        // let recv_message = self.recv_message()?;
+        // let recv_time = recv_start.elapsed();
+        //
+        // let handle_start = Instant::now();
+        // let handled_message = self.handle_message(recv_message)?;
+        // let handle_time = handle_start.elapsed();
+        //
+        // println!("recv_time: {}us", recv_time.as_micros());
+        // println!("handle_time: {}us", handle_time.as_micros());
+        //
+        // self.db.add_readings(handled_message).await;
+        //
         Ok(())
     }
 
