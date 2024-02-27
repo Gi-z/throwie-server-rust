@@ -126,7 +126,7 @@ impl MessageServer {
                         .expect("Didn't receive data");
 
                     let recv_time = recv_start.elapsed();
-                    println!("recv_time: {}us", recv_time.as_micros());
+                    println!("recv_time from addr ({}): {}us", addr, recv_time.as_micros());
 
                     let payload = recv_buf[1..payload_size].to_vec();
 
