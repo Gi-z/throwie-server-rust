@@ -116,31 +116,33 @@ impl MessageServer {
 
         for _ in 0..num_cpus {
             tokio::spawn(async move {
-                let recv_start = Instant::now();
-
                 let socket = open_reusable_socket(String::from("0.0.0.0"), port.clone());
-                let mut recv_buf = [0; UDP_MESSAGE_MAX_SIZE];
-                let (payload_size, addr) = socket.recv_from(&mut recv_buf)
-                    .await
-                    .expect("Didn't receive data");
 
-                let payload = recv_buf[1..payload_size].to_vec();
+                loop {
+                    let recv_start = Instant::now();
+                    let mut recv_buf = [0; UDP_MESSAGE_MAX_SIZE];
+                    let (payload_size, addr) = socket.recv_from(&mut recv_buf)
+                        .await
+                        .expect("Didn't receive data");
 
-                let Ok(format) = MessageType::try_from(recv_buf[0]) else {
-                    return Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
-                };
+                    let recv_time = recv_start.elapsed();
+                    println!("recv_time: {}us", recv_time.as_micros());
 
-                let recv_message = MessageData {
-                    format,
-                    addr,
-                    payload
-                };
+                    let payload = recv_buf[1..payload_size].to_vec();
 
-                let recv_time = recv_start.elapsed();
-                println!("recv_time: {}us", recv_time.as_micros());
+                    // let Ok(format) = MessageType::try_from(recv_buf[0]) else {
+                    //     return Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
+                    // };
 
-                Ok(())
-            }).await.expect("TODO: panic message").expect("TODO: panic message");
+                    let format = MessageType::try_from(recv_buf[0]).unwrap();
+
+                    let recv_message = MessageData {
+                        format,
+                        addr,
+                        payload
+                    };
+                }
+            }).await.expect("TODO: panic message");
         }
         // let recv_start = Instant::now();
         // let recv_message = self.recv_message()?;
