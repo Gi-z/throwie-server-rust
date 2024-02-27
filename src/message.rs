@@ -59,8 +59,9 @@ fn open_reusable_socket(host: String, port: u16) -> UdpSocket {
         socket2::Type::DGRAM,
         None,
     ).unwrap();
-    udp_sock.set_reuse_port(true).unwrap();
-    udp_sock.set_cloexec(true).unwrap();
+    // udp_sock.set_reuse_port(true).unwrap();
+    // udp_sock.set_cloexec(true).unwrap();
+    udp_sock.set_reuse_address(true).unwrap();
     udp_sock.set_nonblocking(true).unwrap();
     udp_sock.bind(&socket2::SockAddr::from(addr)).unwrap();
     let udp_sock: std::net::UdpSocket = udp_sock.into();
@@ -123,8 +124,7 @@ impl MessageServer {
                     .await
                     .expect("Didn't receive data");
 
-
-                let payload = recv_buf[ 1 .. payload_size ].to_vec();
+                let payload = recv_buf[1..payload_size].to_vec();
 
                 let Ok(format) = MessageType::try_from(recv_buf[0]) else {
                     return Err(RecvMessageError::MessageFormatDecodeError(recv_buf[0], addr, payload_size))
@@ -140,7 +140,7 @@ impl MessageServer {
                 println!("recv_time: {}us", recv_time.as_micros());
 
                 Ok(())
-            });
+            }).await.expect("TODO: panic message").expect("TODO: panic message");
         }
         // let recv_start = Instant::now();
         // let recv_message = self.recv_message()?;
