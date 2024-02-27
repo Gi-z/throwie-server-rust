@@ -3,6 +3,7 @@ extern crate num_enum;
 
 use std::collections::HashMap;
 use std::net::{SocketAddr, UdpSocket};
+use std::time::{Instant, SystemTime};
 use crate::{config, csi, telemetry};
 
 use crate::error::RecvMessageError;
@@ -13,6 +14,14 @@ use crate::csi::CSIReading;
 use crate::db::InfluxClient;
 
 const UDP_MESSAGE_MAX_SIZE: usize = 2000;
+
+fn timeit<F: Fn() -> T, T>(f: F) -> (T, u128) {
+    let start = SystemTime::now();
+    let result = f();
+    let end = SystemTime::now();
+    let duration = end.duration_since(start).unwrap();
+    (result, duration.as_millis())
+}
 
 #[derive(IntoPrimitive, TryFromPrimitive, Debug)]
 #[repr(u8)]
@@ -90,9 +99,26 @@ impl MessageServer {
         })
     }
 
+    // pub async fn get_message(&mut self) -> Result<(), RecvMessageError> {
+    //     let message = self.recv_message()?;
+    //     let handled_message = self.handle_message(message)?;
+    //
+    //     self.db.add_readings(handled_message).await;
+    //
+    //     Ok(())
+    // }
+
     pub async fn get_message(&mut self) -> Result<(), RecvMessageError> {
-        let message = self.recv_message()?;
-        let handled_message = self.handle_message(message)?;
+        let recv_start = Instant::now();
+        let recv_message = self.recv_message()?;
+        let recv_time = recv_start.elapsed();
+
+        let handle_start = Instant::now();
+        let handled_message = self.handle_message(recv_message)?;
+        let handle_time = handle_start.elapsed();
+
+        println!("recv_time: {}us", recv_time.as_micros());
+        println!("handle_time: {}us", handle_time.as_micros());
 
         self.db.add_readings(handled_message).await;
 
