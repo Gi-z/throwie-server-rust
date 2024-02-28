@@ -115,10 +115,10 @@ impl MessageServer {
 
                 // continuously read next udp packet
                 loop {
-                    // read incoming udp packet into max size buffer
-
                     // disabled recv_from timer
                     // let recv_start = Instant::now();
+
+                    // read incoming udp packet into max size buffer
                     let mut recv_buf = [0; UDP_MESSAGE_MAX_SIZE];
                     let (payload_size, addr) = socket.recv_from(&mut recv_buf)
                         .await
@@ -151,6 +151,8 @@ impl MessageServer {
                     if local_batch_handle.len() > batch_size as usize {
                         let batch_copy = local_batch_handle.clone();
                         local_batch_handle.clear();
+
+                        // sleep(Duration::from_millis(1000)).await;
 
                         // lock db client so we can issue the write
                         let db_handle = db.lock().await;
