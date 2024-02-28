@@ -7,15 +7,15 @@ mod db;
 mod error;
 mod message;
 mod telemetry;
+mod handler;
+
 mod throwie {
     include!(concat!(env!("OUT_DIR"), "/throwie.rs"));
 }
 
 #[tokio::main]
 async fn main() -> Result<(), RecvMessageError> {
-    // InfluxDB client.
-    let client = db::InfluxClient::new();
-    let mut server = message::MessageServer::new(client);
+    let mut server = message::MessageServer::new();
 
     server.get_message().await
 }

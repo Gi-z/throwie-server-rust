@@ -21,6 +21,7 @@ serde_derive = "1.0.163"
 toml = "0.8.10"
 socket2 = { version = "0.5.6", features = ["all"] }
 num_cpus = "1.16.0"
+futures = "0.3.30"
 
 [build-dependencies]
 protobuf = "3.3.0"

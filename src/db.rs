@@ -1,7 +1,9 @@
 extern crate influxdb;
 
 use influxdb::{Client, WriteQuery};
+use std::sync::{Mutex, RwLock};
 use crate::config;
+use crate::config::Influx;
 
 pub(crate) struct InfluxClient {
     batch: Vec<WriteQuery>,
@@ -36,9 +38,21 @@ impl InfluxClient {
         }
     }
 
+    // pub fn add_readings(&mut self, readings: Vec<WriteQuery>) {
+    //     self.batch.extend(readings);
+    // }
+
     async fn write_batch(&self) {
         let write_result = self.client
             .query(&self.batch)
+            .await;
+        // println!("{}", write_result.unwrap());
+        assert!(write_result.is_ok(), "Write result was not okay");
+    }
+
+    pub async fn write_given_batch(&self, given_batch: Vec<WriteQuery>) {
+        let write_result = self.client
+            .query(given_batch)
             .await;
         // println!("{}", write_result.unwrap());
         assert!(write_result.is_ok(), "Write result was not okay");
