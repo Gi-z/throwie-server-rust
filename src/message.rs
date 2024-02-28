@@ -143,20 +143,24 @@ impl MessageServer {
                     let handled_message = handler::handle_message(recv_message).unwrap();
                     // println!("{:?}", handled_message);
 
-                    // lock the batch so we can add new writequeries
-                    let mut local_batch_handle = batch.lock().await;
-                    local_batch_handle.extend(handled_message);
+                    // separate block so we can drop the lock
+                    {
+                        // lock the batch so we can add new writequeries
+                        let mut local_batch_handle = batch.lock().await;
+                        local_batch_handle.extend(handled_message);
 
-                    // if the batch exceeds write threshold, start a db write
-                    if local_batch_handle.len() > batch_size as usize {
-                        let batch_copy = local_batch_handle.clone();
-                        local_batch_handle.clear();
+                        // if the batch exceeds write threshold, start a db write
+                        if local_batch_handle.len() > batch_size as usize {
+                            let batch_copy = local_batch_handle.clone();
+                            local_batch_handle.clear();
 
-                        // sleep(Duration::from_millis(1000)).await;
+                            // drop the lock on the batch asap so other workers can use it.
+                            drop(local_batch_handle);
 
-                        // lock db client so we can issue the write
-                        let db_handle = db.lock().await;
-                        db_handle.write_given_batch(batch_copy).await;
+                            // lock db client so we can issue the write
+                            let db_handle = db.lock().await;
+                            db_handle.write_given_batch(batch_copy).await;
+                        }
                     }
                 }
             }).await.expect("TODO: panic message");
