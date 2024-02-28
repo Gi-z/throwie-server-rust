@@ -15,7 +15,5 @@ mod throwie {
 
 #[tokio::main]
 async fn main() -> Result<(), RecvMessageError> {
-    let mut server = message::MessageServer::new();
-
-    server.get_message().await
+    message::get_message().await
 }

@@ -36,14 +36,6 @@ pub struct MessageData {
     pub payload: Vec<u8>
 }
 
-pub(crate) struct MessageServer {
-    // db: InfluxClient,
-    frame_map: HashMap<String, i32>,
-    // socket: UdpSocket,
-    host: String,
-    port: u16
-}
-
 fn get_reusable_socket(host: String, port: u16) -> UdpSocket {
     let addr: SocketAddr = format!("{}:{}", host, port).parse().unwrap();
     let udp_sock = socket2::Socket::new(
@@ -64,145 +56,79 @@ fn get_reusable_socket(host: String, port: u16) -> UdpSocket {
     udp_sock.try_into().unwrap()
 }
 
-impl MessageServer {
+pub async fn get_message() -> Result<(), RecvMessageError> {
+    let num_cpus = num_cpus::get();
 
-    pub fn new() -> Self{
-        let config = &config::get().lock().unwrap().message;
-        let host = config.address.clone();
-        let port = config.port.clone();
+    let db_tasks = 1;
+    let handler_tasks = num_cpus -1;
 
-        let frame_map = HashMap::new();
+    println!("Running MessageServer with {} db task and {} handler tasks.", db_tasks, handler_tasks);
+    sleep(Duration::from_millis(1000)).await;
 
-        // let db = db::InfluxClient::new();
+    // get batch write threshold from appconfig
+    let batch_size = config::get().lock().unwrap().influx.write_batch_size;
 
-        Self{
-            // db,
-            frame_map,
-            host,
-            port
-        }
-    }
+    // get reusable handles to mutex for db client and temp batch vector
+    let batch: Arc<Mutex<Vec<WriteQuery>>> = Arc::new(Mutex::new(Vec::new()));
+    let db = Arc::new(Mutex::new(InfluxClient::new()));
 
-    pub async fn get_message(&mut self) -> Result<(), RecvMessageError> {
-        let num_cpus = num_cpus::get();
+    // create channel for receiving db write notification
+    let (tx, mut rx) = watch::channel(false);
+    let arc_tx = Arc::new(tx);
 
-        let db_tasks = 1;
-        let handler_tasks = num_cpus -1;
+    // start thread to receive/handle db write batch limit notifications
+    start_batch_watcher(DbWatchConfig{
+        tx: arc_tx.clone(),
+        rx,
+        batch: batch.clone(),
+        db: db.clone()
+    });
 
-        println!("Running MessageServer with {} db task and {} handler tasks.", db_tasks, handler_tasks);
-        sleep(Duration::from_millis(1000)).await;
+    // num workers = num logical cpus
+    for _ in 0..handler_tasks {
+        // get local handles for tx and batch
+        let batch = batch.clone();
+        let tx = arc_tx.clone();
+        // spawn worker thread
+        tokio::spawn(async move {
+            // different UdpSocket instance per worker
+            // but the same connection is reused
+            let socket = get_reusable_socket(String::from("0.0.0.0"), 6969);
 
-        // get batch write threshold from appconfig
-        let batch_size = config::get().lock().unwrap().influx.write_batch_size;
+            // continuously read next udp packet
+            loop {
+                // read incoming udp packet into max size buffer
+                let mut recv_buf = [0; UDP_MESSAGE_MAX_SIZE];
+                let (payload_size, addr) = socket.recv_from(&mut recv_buf)
+                    .await
+                    .expect("Didn't receive data");
 
-        // get reusable handles to mutex for db client and temp batch vector
-        let batch: Arc<Mutex<Vec<WriteQuery>>> = Arc::new(Mutex::new(Vec::new()));
-        let db = Arc::new(Mutex::new(InfluxClient::new()));
+                // get packet format from first byte
+                let format = MessageType::try_from(recv_buf[0]).unwrap();
+                // rest of buffer = actual payload
+                let payload = recv_buf[1..payload_size].to_vec();
 
-        // create channel for receiving db write notification
-        let (tx, mut rx) = watch::channel(false);
-        let arc_tx = Arc::new(tx);
+                let recv_message = MessageData {
+                    format,
+                    addr,
+                    payload
+                };
 
-        // start thread to receive/handle db write batch limit notifications
-        start_batch_watcher(DbWatchConfig{
-            tx: arc_tx.clone(),
-            rx,
-            batch: batch.clone(),
-            db: db.clone()
-        });
+                // send messagedata to format-specific handler
+                // returns a vector which may contain writequeries to send to db
+                let handled_message = handler::handle_message(recv_message).unwrap();
 
-        // num workers = num logical cpus
-        for _ in 0..handler_tasks {
-            // get local handles for tx and batch
-            let batch = batch.clone();
-            let tx = arc_tx.clone();
-            // spawn worker thread
-            tokio::spawn(async move {
-                // different UdpSocket instance per worker
-                // but the same connection is reused
-                let socket = get_reusable_socket(String::from("0.0.0.0"), 6969);
+                // lock the batch so we can add new writequeries
+                // lock lasts until the handle is out of scope
+                let mut local_batch_handle = batch.lock().await;
+                local_batch_handle.extend(handled_message);
 
-                // continuously read next udp packet
-                loop {
-                    // read incoming udp packet into max size buffer
-                    let mut recv_buf = [0; UDP_MESSAGE_MAX_SIZE];
-                    let (payload_size, addr) = socket.recv_from(&mut recv_buf)
-                        .await
-                        .expect("Didn't receive data");
-
-                    // get packet format from first byte
-                    let format = MessageType::try_from(recv_buf[0]).unwrap();
-                    // rest of buffer = actual payload
-                    let payload = recv_buf[1..payload_size].to_vec();
-
-                    let recv_message = MessageData {
-                        format,
-                        addr,
-                        payload
-                    };
-
-                    // send messagedata to format-specific handler
-                    // returns a vector which may contain writequeries to send to db
-                    let handled_message = handler::handle_message(recv_message).unwrap();
-
-                    // lock the batch so we can add new writequeries
-                    // lock lasts until the handle is out of scope
-                    let mut local_batch_handle = batch.lock().await;
-                    local_batch_handle.extend(handled_message);
-
-                    // if the batch exceeds write threshold, send db write notification
-                    if local_batch_handle.len() > batch_size as usize {
-                        tx.send(true).unwrap();
-                    }
+                // if the batch exceeds write threshold, send db write notification
+                if local_batch_handle.len() > batch_size as usize {
+                    tx.send(true).unwrap();
                 }
-            }).await.expect("TODO: panic message");
-        }
-        Ok(())
-    }
-
-    fn map_frame(&mut self, mut reading: CSIReading) -> CSIReading {
-        let sequence_identifier = reading.sequence_identifier;
-        let key = format!("{}/{}", reading.mac.clone(), reading.antenna.clone());
-
-        match self.frame_map.get(&key) {
-            Some(stored_frame) => {
-                // Get interval
-                // let ret_sequence: i32 = i32::try_from(stored_frame).ok().unwrap();
-                let ret_sequence: i32 = stored_frame.clone();
-                // if ret_sequence > sequence_identifier {
-                //     // Wraparound has occurred. Get diff minus u16 max.
-                //     println!("wraparound check is fuck");
-                //     let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
-                //     reading.interval = sequence_identifier + ret_diff_from_max;
-                // } else {
-                //     reading.interval = sequence_identifier - ret_sequence;
-                // }
-
-                // if ret_sequence > sequence_identifier {
-                //     // Wraparound has occurred. Get diff minus u16 max.
-                //     // println!("wraparound check is fuck");
-                //     let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
-                //     reading.interval = sequence_identifier + ret_diff_from_max;
-                //     println!("{:#?}", reading);
-                // } else {
-                reading.interval = sequence_identifier - ret_sequence;
-                // }
-
-                // Get PCC
-                // let new_matrix = msg_reading.csi_matrix.clone();
-                // let corr = csi::get_correlation_coefficient(new_matrix, &stored_frame.csi_matrix).unwrap();
-                //
-                // reading.correlation_coefficient = corr;
-
-                *self.frame_map.get_mut(&key).unwrap() = sequence_identifier;
             }
-            None => {
-                self.frame_map.insert(key, sequence_identifier);
-                println!("Added new client with src_mac: {} (time: {})", reading.mac.clone(), reading.time.clone());
-            }
-        }
-
-        reading
+        }).await.expect("TODO: panic message");
     }
-
+    Ok(())
 }
