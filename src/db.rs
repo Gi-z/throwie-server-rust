@@ -1,11 +1,12 @@
 extern crate influxdb;
 
 use influxdb::{Client, WriteQuery};
-use std::sync::{Mutex, RwLock};
+use std::sync::Arc;
+use futures::lock::Mutex;
+use tokio::sync::watch::{Receiver, Sender};
 use crate::config;
-use crate::config::Influx;
 
-pub(crate) struct InfluxClient {
+pub struct InfluxClient {
     batch: Vec<WriteQuery>,
     client: Client,
 }
@@ -61,4 +62,34 @@ impl InfluxClient {
     pub fn get_client(url: &str, database: &str) -> Client {
         Client::new(url, database)
     }
+}
+
+pub struct DbWatchConfig {
+    pub tx: Arc<Sender<bool>>,
+    pub rx: Receiver<bool>,
+    pub batch: Arc<Mutex<Vec<WriteQuery>>>,
+    pub db: Arc<Mutex<InfluxClient>>
+}
+
+pub fn start_batch_watcher(mut config: DbWatchConfig) -> () {
+    tokio::spawn(async move {
+        while config.rx.changed().await.is_ok() { // watched channel value changed
+            if *config.rx.borrow() == true { // only run when hitting batch size limit
+                // reset channel value
+                config.tx.send(false).unwrap();
+
+                // lock the batch and clone it
+                let mut batch_ref = config.batch.lock().await;
+                let batch_copy = batch_ref.clone();
+
+                // empty the batch and manually drop the lock
+                batch_ref.clear();
+                drop(batch_ref);
+
+                // lock db client so we can issue the write
+                let db_handle = config.db.lock().await;
+                db_handle.write_given_batch(batch_copy).await;
+            }
+        }
+    });
 }

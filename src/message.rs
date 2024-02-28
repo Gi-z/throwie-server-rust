@@ -5,9 +5,9 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, Condvar};
+use std::sync::Arc;
 use futures::lock::Mutex;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 use influxdb::WriteQuery;
 
 use tokio::net::UdpSocket;
@@ -16,18 +16,10 @@ use tokio::time::sleep;
 
 use crate::{config, db, handler};
 use crate::csi::CSIReading;
-use crate::db::InfluxClient;
+use crate::db::{DbWatchConfig, InfluxClient, start_batch_watcher};
 use crate::error::RecvMessageError;
 
 const UDP_MESSAGE_MAX_SIZE: usize = 2000;
-
-fn timeit<F: Fn() -> T, T>(f: F) -> (T, u128) {
-    let start = SystemTime::now();
-    let result = f();
-    let end = SystemTime::now();
-    let duration = end.duration_since(start).unwrap();
-    (result, duration.as_millis())
-}
 
 #[derive(IntoPrimitive, TryFromPrimitive, Debug)]
 #[repr(u8)]
@@ -111,34 +103,17 @@ impl MessageServer {
         let (tx, mut rx) = watch::channel(false);
         let arc_tx = Arc::new(tx);
 
-        let watch_tx_ref = arc_tx.clone();
-        let watch_batch_ref = batch.clone();
-        let watch_db_ref = db.clone();
-
-        tokio::spawn(async move {
-            while rx.changed().await.is_ok() { // watched channel value changed
-                if *rx.borrow() == true { // only run when hitting batch size limit
-                    // reset channel value
-                    watch_tx_ref.send(false).unwrap();
-
-                    // lock the batch and clone it
-                    let mut batch_ref = watch_batch_ref.lock().await;
-                    let batch_copy = batch_ref.clone();
-
-                    // empty the batch and drop the lock
-                    batch_ref.clear();
-                    drop(batch_ref);
-
-                    // lock db client so we can issue the write
-                    let db_handle = watch_db_ref.lock().await;
-                    db_handle.write_given_batch(batch_copy).await;
-                }
-            }
+        // start thread to receive/handle db write batch limit notifications
+        start_batch_watcher(DbWatchConfig{
+            tx: arc_tx.clone(),
+            rx,
+            batch: batch.clone(),
+            db: db.clone()
         });
 
         // num workers = num logical cpus
-        for _ in 0..(num_cpus - 1) {
-            // get local handles for db and batch
+        for _ in 0..handler_tasks {
+            // get local handles for tx and batch
             let batch = batch.clone();
             let tx = arc_tx.clone();
             // spawn worker thread
@@ -149,17 +124,11 @@ impl MessageServer {
 
                 // continuously read next udp packet
                 loop {
-                    // disabled recv_from timer
-                    // let recv_start = Instant::now();
-
                     // read incoming udp packet into max size buffer
                     let mut recv_buf = [0; UDP_MESSAGE_MAX_SIZE];
                     let (payload_size, addr) = socket.recv_from(&mut recv_buf)
                         .await
                         .expect("Didn't receive data");
-
-                    // let recv_time = recv_start.elapsed();
-                    // println!("recv_time from addr ({}): {}us", addr, recv_time.as_micros());
 
                     // get packet format from first byte
                     let format = MessageType::try_from(recv_buf[0]).unwrap();
@@ -175,9 +144,9 @@ impl MessageServer {
                     // send messagedata to format-specific handler
                     // returns a vector which may contain writequeries to send to db
                     let handled_message = handler::handle_message(recv_message).unwrap();
-                    // println!("{:?}", handled_message);
 
                     // lock the batch so we can add new writequeries
+                    // lock lasts until the handle is out of scope
                     let mut local_batch_handle = batch.lock().await;
                     local_batch_handle.extend(handled_message);
 
