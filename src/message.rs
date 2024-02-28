@@ -5,12 +5,13 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc};
+use std::sync::{Arc, Condvar};
 use futures::lock::Mutex;
 use std::time::{Duration, Instant, SystemTime};
 use influxdb::WriteQuery;
 
 use tokio::net::UdpSocket;
+use tokio::sync::watch;
 use tokio::time::sleep;
 
 use crate::{config, db, handler};
@@ -92,7 +93,11 @@ impl MessageServer {
 
     pub async fn get_message(&mut self) -> Result<(), RecvMessageError> {
         let num_cpus = num_cpus::get();
-        println!("Running MessageServer on {} tasks.", num_cpus);
+
+        let db_tasks = 1;
+        let handler_tasks = num_cpus -1;
+
+        println!("Running MessageServer with {} db task and {} handler tasks.", db_tasks, handler_tasks);
         sleep(Duration::from_millis(1000)).await;
 
         // get batch write threshold from appconfig
@@ -102,11 +107,40 @@ impl MessageServer {
         let batch: Arc<Mutex<Vec<WriteQuery>>> = Arc::new(Mutex::new(Vec::new()));
         let db = Arc::new(Mutex::new(InfluxClient::new()));
 
+        // create channel for receiving db write notification
+        let (tx, mut rx) = watch::channel(false);
+        let arc_tx = Arc::new(tx);
+
+        let watch_tx_ref = arc_tx.clone();
+        let watch_batch_ref = batch.clone();
+        let watch_db_ref = db.clone();
+
+        tokio::spawn(async move {
+            while rx.changed().await.is_ok() { // watched channel value changed
+                if *rx.borrow() == true { // only run when hitting batch size limit
+                    // reset channel value
+                    watch_tx_ref.send(false).unwrap();
+
+                    // lock the batch and clone it
+                    let mut batch_ref = watch_batch_ref.lock().await;
+                    let batch_copy = batch_ref.clone();
+
+                    // empty the batch and drop the lock
+                    batch_ref.clear();
+                    drop(batch_ref);
+
+                    // lock db client so we can issue the write
+                    let db_handle = watch_db_ref.lock().await;
+                    db_handle.write_given_batch(batch_copy).await;
+                }
+            }
+        });
+
         // num workers = num logical cpus
-        for _ in 0..num_cpus {
+        for _ in 0..(num_cpus - 1) {
             // get local handles for db and batch
             let batch = batch.clone();
-            let db = db.clone();
+            let tx = arc_tx.clone();
             // spawn worker thread
             tokio::spawn(async move {
                 // different UdpSocket instance per worker
@@ -143,24 +177,13 @@ impl MessageServer {
                     let handled_message = handler::handle_message(recv_message).unwrap();
                     // println!("{:?}", handled_message);
 
-                    // separate block so we can drop the lock
-                    {
-                        // lock the batch so we can add new writequeries
-                        let mut local_batch_handle = batch.lock().await;
-                        local_batch_handle.extend(handled_message);
+                    // lock the batch so we can add new writequeries
+                    let mut local_batch_handle = batch.lock().await;
+                    local_batch_handle.extend(handled_message);
 
-                        // if the batch exceeds write threshold, start a db write
-                        if local_batch_handle.len() > batch_size as usize {
-                            let batch_copy = local_batch_handle.clone();
-                            local_batch_handle.clear();
-
-                            // drop the lock on the batch asap so other workers can use it.
-                            drop(local_batch_handle);
-
-                            // lock db client so we can issue the write
-                            let db_handle = db.lock().await;
-                            db_handle.write_given_batch(batch_copy).await;
-                        }
+                    // if the batch exceeds write threshold, send db write notification
+                    if local_batch_handle.len() > batch_size as usize {
+                        tx.send(true).unwrap();
                     }
                 }
             }).await.expect("TODO: panic message");
