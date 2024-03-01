@@ -2,7 +2,7 @@ extern crate influxdb;
 
 use influxdb::{Client, WriteQuery};
 use std::sync::Arc;
-use futures::lock::Mutex;
+use tokio::sync::Mutex;
 use tokio::sync::watch::{Receiver, Sender};
 use crate::config;
 

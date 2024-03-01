@@ -3,25 +3,23 @@ extern crate num_enum;
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use futures::lock::Mutex;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use influxdb::WriteQuery;
 
 use tokio::net::UdpSocket;
-use tokio::sync::watch;
+use tokio::sync::{Mutex, watch};
 use tokio::time::sleep;
 
-use crate::{config, db, handler};
-use crate::csi::CSIReading;
+use crate::{config, handler};
 use crate::db::{DbWatchConfig, InfluxClient, start_batch_watcher};
 use crate::error::RecvMessageError;
+use crate::handler::MessageHandler;
 
 const UDP_MESSAGE_MAX_SIZE: usize = 2000;
 
-#[derive(IntoPrimitive, TryFromPrimitive, Debug)]
+#[derive(IntoPrimitive, TryFromPrimitive, Debug, PartialEq)]
 #[repr(u8)]
 pub enum MessageType {
     Telemetry = 0x01,
@@ -56,7 +54,7 @@ fn get_reusable_socket(host: String, port: u16) -> UdpSocket {
     udp_sock.try_into().unwrap()
 }
 
-pub async fn get_message() -> Result<(), RecvMessageError> {
+pub async fn get_message(address: String, port: u16) -> Result<(), RecvMessageError> {
     let num_cpus = num_cpus::get();
 
     let db_tasks = 1;
@@ -66,11 +64,12 @@ pub async fn get_message() -> Result<(), RecvMessageError> {
     sleep(Duration::from_millis(1000)).await;
 
     // get batch write threshold from appconfig
-    let batch_size = config::get().lock().unwrap().influx.write_batch_size;
+    let batch_size = config::get().lock().unwrap().influx.write_batch_size as usize;
 
-    // get reusable handles to mutex for db client and temp batch vector
+    // get reusable handles to mutex for db client and temp batch vector, and our frame map
     let batch: Arc<Mutex<Vec<WriteQuery>>> = Arc::new(Mutex::new(Vec::new()));
     let db = Arc::new(Mutex::new(InfluxClient::new()));
+    let handler = Arc::new(MessageHandler::new());
 
     // create channel for receiving db write notification
     let (tx, mut rx) = watch::channel(false);
@@ -89,6 +88,8 @@ pub async fn get_message() -> Result<(), RecvMessageError> {
         // get local handles for tx and batch
         let batch = batch.clone();
         let tx = arc_tx.clone();
+        let handler = handler.clone();
+
         // spawn worker thread
         tokio::spawn(async move {
             // different UdpSocket instance per worker
@@ -116,7 +117,7 @@ pub async fn get_message() -> Result<(), RecvMessageError> {
 
                 // send messagedata to format-specific handler
                 // returns a vector which may contain writequeries to send to db
-                let handled_message = handler::handle_message(recv_message).unwrap();
+                let handled_message = handler.handle_message(recv_message).unwrap();
 
                 // lock the batch so we can add new writequeries
                 // lock lasts until the handle is out of scope
@@ -124,7 +125,7 @@ pub async fn get_message() -> Result<(), RecvMessageError> {
                 local_batch_handle.extend(handled_message);
 
                 // if the batch exceeds write threshold, send db write notification
-                if local_batch_handle.len() > batch_size as usize {
+                if local_batch_handle.len() > batch_size {
                     tx.send(true).unwrap();
                 }
             }

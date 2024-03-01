@@ -23,6 +23,8 @@ pub struct CSIReading {
     pub interval: i32,
     #[influxdb(tag)] pub mac: String,
     #[influxdb(tag)] pub antenna: i8,
+
+    #[influxdb(ignore)] pub csi_matrix: Array<f32, Ix2>
 }
 
 impl CSIReading {
@@ -40,6 +42,8 @@ impl CSIReading {
         let interval = 1;
         let correlation_coefficient = 0.0;
 
+        let csi_matrix = Array::zeros((1, 64));
+
         Self {
             time,
             antenna,
@@ -48,7 +52,8 @@ impl CSIReading {
             correlation_coefficient,
             mac,
             sequence_identifier,
-            interval
+            interval,
+            csi_matrix
         }
     }
 }
