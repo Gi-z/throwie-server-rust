@@ -103,7 +103,7 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIReadi
 
             // check if this frame arrived out of sequence
             // if so, don't generate metrics as they won't mean anything.
-            if sequence_identifier < ret_sequence || new_interval < 65000 { // additional check for u16 seq no wraparound
+            if sequence_identifier < ret_sequence || new_interval > 65000 { // additional check for u16 seq no wraparound
                 reading.interval = ret_sequence;
                 // TODO: Add telemetry message to indicate this occurred.
             } else {
