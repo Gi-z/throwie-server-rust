@@ -6,6 +6,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use dashmap::DashMap;
 use influxdb::WriteQuery;
 
 use tokio::net::UdpSocket;
@@ -69,11 +70,12 @@ pub async fn get_message(address: String, port: u16) -> Result<(), RecvMessageEr
     // get reusable handles to mutex for db client and temp batch vector, and our frame map
     let batch: Arc<Mutex<Vec<WriteQuery>>> = Arc::new(Mutex::new(Vec::new()));
     let db = Arc::new(Mutex::new(InfluxClient::new()));
-    let handler = Arc::new(MessageHandler::new());
 
     // create channel for receiving db write notification
     let (tx, mut rx) = watch::channel(false);
     let arc_tx = Arc::new(tx);
+
+    let arc_frame_map = Arc::new(DashMap::new());
 
     // start thread to receive/handle db write batch limit notifications
     start_batch_watcher(DbWatchConfig{
@@ -88,7 +90,7 @@ pub async fn get_message(address: String, port: u16) -> Result<(), RecvMessageEr
         // get local handles for tx and batch
         let batch = batch.clone();
         let tx = arc_tx.clone();
-        let handler = handler.clone();
+        let frame_map = arc_frame_map.clone();
 
         // spawn worker thread
         tokio::spawn(async move {
@@ -117,7 +119,7 @@ pub async fn get_message(address: String, port: u16) -> Result<(), RecvMessageEr
 
                 // send messagedata to format-specific handler
                 // returns a vector which may contain writequeries to send to db
-                let handled_message = handler.handle_message(recv_message).unwrap();
+                let handled_message = handler::handle_message(recv_message, &frame_map).unwrap();
 
                 // lock the batch so we can add new writequeries
                 // lock lasts until the handle is out of scope

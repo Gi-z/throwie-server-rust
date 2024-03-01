@@ -42,7 +42,7 @@ impl CSIReading {
         let interval = 1;
         let correlation_coefficient = 0.0;
 
-        let csi_matrix = Array::zeros((1, 64));
+        let csi_matrix = get_csi_matrix(msg).unwrap();
 
         Self {
             time,
