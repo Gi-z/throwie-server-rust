@@ -99,10 +99,11 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIReadi
         Some(mut stored_frame) => {
             // Get interval
             let ret_sequence: i32 = stored_frame.value().sequence_identifier;
+            let new_interval = sequence_identifier - ret_sequence;
 
             // check if this frame arrived out of sequence
             // if so, don't generate metrics as they won't mean anything.
-            if sequence_identifier < ret_sequence {
+            if sequence_identifier < ret_sequence || new_interval < 65000 { // additional check for u16 seq no wraparound
                 reading.interval = ret_sequence;
                 // TODO: Add telemetry message to indicate this occurred.
             } else {
@@ -111,7 +112,7 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIReadi
                 let corr = csi::get_correlation_coefficient(new_matrix, &stored_frame.csi_matrix);
 
                 reading.correlation_coefficient = corr;
-                reading.interval = sequence_identifier - ret_sequence;
+                reading.interval = new_interval;
             }
 
             *stored_frame = reading.clone();
