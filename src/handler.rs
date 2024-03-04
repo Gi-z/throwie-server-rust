@@ -106,9 +106,6 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIReadi
             if sequence_identifier < ret_sequence {
                 reading.interval = ret_sequence;
                 // TODO: Add telemetry message to indicate this occurred.
-            } else if (new_interval > 65000) { // assume wraparound on sequence no
-                let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
-                reading.interval = sequence_identifier + ret_diff_from_max;
             } else {
                 // Get PCC
                 let new_matrix = reading.csi_matrix.clone();
@@ -116,6 +113,11 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIReadi
 
                 reading.correlation_coefficient = corr;
                 reading.interval = new_interval;
+            }
+
+            if reading.interval > 65000 {
+                let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+                reading.interval = sequence_identifier + ret_diff_from_max;
             }
 
             *stored_frame = reading.clone();
