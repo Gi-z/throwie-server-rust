@@ -29,15 +29,6 @@ impl InfluxClient {
         }
     }
 
-    pub async fn add_readings(&mut self, readings: Vec<WriteQuery>) {
-        self.batch.extend(readings);
-
-        if self.batch.len() > config::get().lock().unwrap().influx.write_batch_size as usize {
-            self.write_batch().await;
-            self.batch.clear();
-        }
-    }
-
     pub async fn write_given_batch(&self, given_batch: Vec<WriteQuery>) {
         let write_result = self.client
             .query(given_batch)

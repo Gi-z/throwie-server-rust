@@ -103,9 +103,12 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIReadi
 
             // check if this frame arrived out of sequence
             // if so, don't generate metrics as they won't mean anything.
-            if sequence_identifier < ret_sequence || new_interval > 65000 { // additional check for u16 seq no wraparound
+            if sequence_identifier < ret_sequence {
                 reading.interval = ret_sequence;
                 // TODO: Add telemetry message to indicate this occurred.
+            } else if (new_interval > 65000) { // assume wraparound on sequence no
+                let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+                reading.interval = sequence_identifier + ret_diff_from_max;
             } else {
                 // Get PCC
                 let new_matrix = reading.csi_matrix.clone();
