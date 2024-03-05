@@ -87,7 +87,7 @@ fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError>
         //     filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]];
         // }
 
-        let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone() as i8);
+        let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone());
 
         let mut filtered_csi_matrix = Array::zeros((1, 51));
         for (n, val) in REQUIRED_SUBCARRIERS.into_iter().enumerate() {
@@ -120,7 +120,7 @@ fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError>
         // for n in 1..53 {
         //     filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]];
         // }
-        let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone() as i8);
+        let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone());
 
         let mut filtered_csi_matrix = Array::zeros((1, 53));
         for (n, val) in (1..53).into_iter().enumerate() {
