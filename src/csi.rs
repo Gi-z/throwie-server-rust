@@ -79,7 +79,10 @@ fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError>
             let sum_of_squares = imag.powi(2) + real.powi(2);
             let norm = sum_of_squares.sqrt();
 
-            csi_matrix[[0, n]] = norm;
+            let db_val = 20 as f32 * norm.log10();
+            csi_matrix[[0, n]] = db_val;
+
+            // csi_matrix[[0, n]] = norm;
         }
 
         // let mut filtered_csi_matrix = Array::zeros((1, 51));
@@ -109,8 +112,8 @@ fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError>
             // if norm == 0.0 {
             //     csi_matrix[[0, n]] = norm;
             // } else {
-            //     let db_val = 20 as f32 * norm.log10();
-            //     csi_matrix[[0, n]] = db_val;
+                let db_val = 20 as f32 * norm.log10();
+                csi_matrix[[0, n]] = db_val;
             // }
 
             csi_matrix[[0, n]] = norm;
