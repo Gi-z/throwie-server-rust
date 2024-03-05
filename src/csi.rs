@@ -123,7 +123,7 @@ fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError>
         let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone() as i8);
 
         let mut filtered_csi_matrix = Array::zeros((1, 53));
-        for (n, val) in 1..53 {
+        for (n, val) in (1..53).into_iter().enumerate() {
             filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]] * scaling_factor.sqrt();
         }
 
