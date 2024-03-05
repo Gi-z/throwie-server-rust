@@ -79,8 +79,12 @@ fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError>
             let sum_of_squares = imag.powi(2) + real.powi(2);
             let norm = sum_of_squares.sqrt();
 
-            let db_val = 20 as f32 * norm.log10();
-            csi_matrix[[0, n]] = db_val;
+            if norm == 0.0 {
+                csi_matrix[[0, n]] = norm;
+            } else {
+                let db_val = 20 as f32 * norm.log10();
+                csi_matrix[[0, n]] = db_val;
+            }
         }
 
         let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone());
@@ -102,10 +106,18 @@ fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError>
             let sum_of_squares = imag.powi(2) + real.powi(2);
             let norm = sum_of_squares.sqrt();
 
-            let db_val = 20 as f32 * norm.log10();
-            csi_matrix[[0, n]] = db_val;
+            if norm == 0.0 {
+                csi_matrix[[0, n]] = norm;
+            } else {
+                let db_val = 20 as f32 * norm.log10();
+                csi_matrix[[0, n]] = db_val;
+            }
         }
 
+        // let mut filtered_csi_matrix = Array::zeros((1, 53));
+        // for n in 1..53 {
+        //     filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]];
+        // }
         let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone());
 
         let mut filtered_csi_matrix = Array::zeros((1, 53));
