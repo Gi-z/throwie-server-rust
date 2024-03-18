@@ -37,7 +37,7 @@ impl CSIReading {
         let noise_floor = i8::try_from(msg.noise_floor).unwrap();
         let sequence_identifier = i32::try_from(msg.sequence_identifier).unwrap();
 
-        let mac = format!("0x{:X}", msg.src_mac.clone()[5]);
+        let mac = format!("{:X}{:X}{:X}", msg.src_mac.clone()[3], msg.src_mac.clone()[4], msg.src_mac.clone()[5]);
 
         let interval = 1;
         let correlation_coefficient = 0.0;
