@@ -26,7 +26,7 @@ impl TelemetryReading {
         let current_sequence_identifier = msg.current_sequence_identifier as i16;
         let uptime_ms = msg.uptime_ms;
 
-        let mac = format!("{:X}{:X}{:X}", msg.device_mac.clone()[3], msg.device_mac.clone()[4], msg.device_mac.clone()[5]);
+        let device_mac = format!("{:X}{:X}{:X}", msg.device_mac.clone()[3], msg.device_mac.clone()[4], msg.device_mac.clone()[5]);
         let version = msg.version.clone();
         let device_type = msg.device_type as i8;
         let is_eth = msg.is_eth;
