@@ -1,15 +1,12 @@
-use std::ptr::read;
 use influxdb::{WriteQuery, InfluxDbWriteable};
 
 use crate::{config, csi, telemetry};
 use crate::error::RecvMessageError;
 use crate::message::{MessageData, MessageType};
-use crate::throwie::CsiMessage;
 
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use prost::DecodeError;
 use crate::csi::CSIReading;
 
 fn csi_metrics_measurement() -> String {
@@ -60,10 +57,10 @@ fn handle_compressed_csi(message: MessageData, f: &Arc<DashMap<String, CSIReadin
     let decompressed_data = inflate::inflate_bytes_zlib(&message.payload).unwrap();
     let frame_count = decompressed_data.len() / compressed_frame_size;
 
-    if (decompressed_data.len() % compressed_frame_size) > 0 {
-        println!("Could not determine the number of frames in compressed container from {:?} with size: {:?}.", message.addr, decompressed_data.len());
-        return Err(RecvMessageError::MessageDecompressionError())
-    }
+    // if (decompressed_data.len() % compressed_frame_size) > 0 {
+    //     println!("Could not determine the number of frames in compressed container from {:?} with size: {:?}.", message.addr, decompressed_data.len());
+    //     return Err(RecvMessageError::MessageDecompressionError())
+    // }
 
     // println!("Frames in container: {:?} from {}", frame_count, message.addr);
 
