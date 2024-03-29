@@ -17,7 +17,7 @@ const REQUIRED_SUBCARRIERS: [usize; 51] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1
 pub struct CSIReading {
     pub time: Timestamp,
     rssi: i8,
-    noise_floor: i8,
+    noise_floor: i32,
     pub correlation_coefficient: f32,
     pub sequence_identifier: i32,
     pub interval: i32,
@@ -34,7 +34,7 @@ impl CSIReading {
 
         let antenna = i8::try_from(msg.antenna).unwrap();
         let rssi = i8::try_from(msg.rssi).unwrap();
-        let noise_floor = i8::try_from(msg.noise_floor).unwrap();
+        let noise_floor = i32::try_from(msg.noise_floor).unwrap();
         let sequence_identifier = i32::try_from(msg.sequence_identifier).unwrap();
 
         let mac = format!("{:X}{:X}{:X}", msg.src_mac.clone()[3], msg.src_mac.clone()[4], msg.src_mac.clone()[5]);
