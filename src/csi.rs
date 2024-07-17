@@ -34,7 +34,7 @@ impl CSIReading {
 
         let antenna = i8::try_from(msg.antenna).unwrap();
         let rssi = i8::try_from(msg.rssi).unwrap();
-        let noise_floor = i32::try_from(msg.noise_floor).unwrap();
+        let noise_floor = i32::try_from(msg.noise_floor as i8).unwrap();
         let sequence_identifier = i32::try_from(msg.sequence_identifier).unwrap();
 
         let mac = format!("{:X}{:X}{:X}", msg.src_mac.clone()[3], msg.src_mac.clone()[4], msg.src_mac.clone()[5]);
