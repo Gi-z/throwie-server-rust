@@ -1,14 +1,14 @@
 [message]
 address = "0.0.0.0"
 port = 6969
-csi_frame_size = 145
+csi_frame_size = 170
 
 [influx]
 protocol = "http"
 address = "csi-hub"
 port = 8086
 #username = "influx"
-write_batch_size = 500
+write_batch_size = 50
 database = "influx"
 csi_metrics_measurement = "csi_metrics"
 sensor_telemetry_measurement = "telemetry"

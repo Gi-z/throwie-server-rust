@@ -10,8 +10,12 @@ use ndarray_stats;
 use prost::{DecodeError, Message};
 use crate::error::RecvMessageError;
 
-const FILTER_SUBARRIERS: [u8; 13] = [0, 1, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37];
-const REQUIRED_SUBCARRIERS: [usize; 51] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
+//const FILTER_SUBCARRIERS: [u8; 11] = [0, 1, 28, 29, 30, 31, 32, 33, 34, 35, 36];
+const FILTER_SUBCARRIERS: [u8; 4] = [0, 1, 2, 3];
+//const REQUIRED_SUBCARRIERS: [usize; 53] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
+const REQUIRED_SUBCARRIERS: [usize; 60] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
+
+const ACTIVE_SUBCARRIERS: usize = 60;
 
 #[derive(Clone, InfluxDbWriteable, Debug)]
 pub struct CSIReading {
@@ -68,65 +72,35 @@ pub fn parse_csi_protobuf(expected_protobuf: &[u8]) -> Result<CsiMessage, Decode
 fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError> {
     let csi_data = msg.csi_data.clone();
 
-    if csi_data.len() == 128 {
-        let mut csi_matrix = Array::zeros((1, 64));
+    let mut csi_matrix = Array::zeros((1, ACTIVE_SUBCARRIERS));
 
-        for n in 1..64 {
-            // print!("{:?}", csi_data);
-            let imag = csi_data[n * 2] as i8 as f32;
-            let real = csi_data[n * 2 + 1] as i8 as f32;
+    for (dest, src) in REQUIRED_SUBCARRIERS.into_iter().enumerate() {
+        //print!("{:?}", csi_data);
+        let imag = csi_data[src * 2] as i8 as f32;
+        let real = csi_data[src * 2 + 1] as i8 as f32;
 
-            let sum_of_squares = imag.powi(2) + real.powi(2);
-            let norm = sum_of_squares.sqrt();
+        let sum_of_squares = imag.powi(2) + real.powi(2);
+        let norm = sum_of_squares.sqrt();
 
-            if norm == 0.0 {
-                csi_matrix[[0, n]] = norm;
-            } else {
-                let db_val = 20 as f32 * norm.log10();
-                csi_matrix[[0, n]] = db_val;
-            }
+        if norm == 0.0 {
+            csi_matrix[[0, dest]] = norm;
+        } else {
+            let db_val = 20 as f32 * norm.log10();
+            csi_matrix[[0, dest]] = db_val;
         }
-
-        let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone());
-
-        let mut filtered_csi_matrix = Array::zeros((1, 51));
-        for (n, val) in REQUIRED_SUBCARRIERS.into_iter().enumerate() {
-            filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]] * scaling_factor.sqrt();
-        }
-
-        Ok(filtered_csi_matrix)
-    } else {
-        let mut csi_matrix = Array::zeros((1, 53));
-
-        for n in 1..53 {
-            // print!("{:?}", csi_data);
-            let imag = csi_data[n * 2] as i8 as f32;
-            let real = csi_data[n * 2 + 1] as i8 as f32;
-
-            let sum_of_squares = imag.powi(2) + real.powi(2);
-            let norm = sum_of_squares.sqrt();
-
-            if norm == 0.0 {
-                csi_matrix[[0, n]] = norm;
-            } else {
-                let db_val = 20 as f32 * norm.log10();
-                csi_matrix[[0, n]] = db_val;
-            }
-        }
-
-        // let mut filtered_csi_matrix = Array::zeros((1, 53));
-        // for n in 1..53 {
-        //     filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]];
-        // }
-        let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone());
-
-        let mut filtered_csi_matrix = Array::zeros((1, 53));
-        for (n, val) in (1..53).into_iter().enumerate() {
-            filtered_csi_matrix[[0, n]] = csi_matrix[[0, val]] * scaling_factor.sqrt();
-        }
-
-        Ok(filtered_csi_matrix)
     }
+
+    //print!("{:?}", csi_matrix);
+
+    let mut filtered_csi_matrix = Array::zeros((1, ACTIVE_SUBCARRIERS));
+    let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone());
+
+    for n in 1..ACTIVE_SUBCARRIERS {
+        //filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]];
+        filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]] * scaling_factor.sqrt();
+    }
+
+    Ok(filtered_csi_matrix)
 }
 
 pub fn get_correlation_coefficient(frame: Array<f32, Ix2>, frame2: &Array<f32, Ix2>) -> f32 {

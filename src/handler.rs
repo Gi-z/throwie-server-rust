@@ -54,7 +54,12 @@ fn handle_compressed_csi(message: MessageData, f: &Arc<DashMap<String, CSIReadin
     let compressed_frame_size = (config::get().lock().unwrap().message.csi_frame_size + 1) as usize;
 
     // batch of readings
-    let decompressed_data = inflate::inflate_bytes_zlib(&message.payload).unwrap();
+    let expected_compressed_size = u16::from_le_bytes(message.payload[0 .. 2].try_into().unwrap());
+    let expected_end_index = (expected_compressed_size + 2) as usize;
+    //println!("Compressed CSI container with expected_size: {} actual size: {}", expected_compressed_size, message.payload.len() - 2);
+
+    let compressed_payload = message.payload[2 .. expected_end_index].to_vec();
+    let decompressed_data = inflate::inflate_bytes_zlib(compressed_payload.as_slice()).unwrap();
     let frame_count = decompressed_data.len() / compressed_frame_size;
 
     // if (decompressed_data.len() % compressed_frame_size) > 0 {
@@ -108,6 +113,7 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIReadi
                 let new_matrix = reading.csi_matrix.clone();
                 let corr = csi::get_correlation_coefficient(new_matrix, &stored_frame.csi_matrix);
 
+                //print!("got here");
                 reading.correlation_coefficient = corr;
                 reading.interval = new_interval;
             }
