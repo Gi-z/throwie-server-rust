@@ -64,7 +64,7 @@ impl CSIReading {
 
 pub fn parse_csi_protobuf(expected_protobuf: &[u8]) -> Result<CsiMessage, DecodeError>  {
     match CsiMessage::decode(expected_protobuf) {
-        Ok(T) => Ok(T),
+        Ok(t) => Ok(t),
         Err(e) => Err(e),
     }
 }

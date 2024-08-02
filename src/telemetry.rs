@@ -46,7 +46,7 @@ impl TelemetryReading {
 
 pub fn parse_telemetry_protobuf(expected_protobuf: &[u8]) -> Result<TelemetryMessage, DecodeError> {
     match TelemetryMessage::decode(expected_protobuf) {
-        Ok(T) => Ok(T),
+        Ok(t) => Ok(t),
         Err(e) => Err(e),
     }
 }

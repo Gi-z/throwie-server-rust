@@ -16,7 +16,6 @@ use tokio::time::sleep;
 use crate::{config, handler};
 use crate::db::{DbWatchConfig, InfluxClient, start_batch_watcher};
 use crate::error::RecvMessageError;
-use crate::handler::MessageHandler;
 
 const UDP_MESSAGE_MAX_SIZE: usize = 2000;
 
@@ -55,7 +54,7 @@ fn get_reusable_socket(host: String, port: u16) -> UdpSocket {
     udp_sock.try_into().unwrap()
 }
 
-pub async fn get_message(address: String, port: u16) -> Result<(), RecvMessageError> {
+pub async fn get_message() -> Result<(), RecvMessageError> {
     let num_cpus = num_cpus::get();
 
     let db_tasks = 1;
@@ -72,7 +71,7 @@ pub async fn get_message(address: String, port: u16) -> Result<(), RecvMessageEr
     let db = Arc::new(Mutex::new(InfluxClient::new()));
 
     // create channel for receiving db write notification
-    let (tx, mut rx) = watch::channel(false);
+    let (tx, rx) = watch::channel(false);
     let arc_tx = Arc::new(tx);
 
     let arc_frame_map = Arc::new(DashMap::new());
@@ -96,7 +95,10 @@ pub async fn get_message(address: String, port: u16) -> Result<(), RecvMessageEr
         tokio::spawn(async move {
             // different UdpSocket instance per worker
             // but the same connection is reused
-            let socket = get_reusable_socket(String::from("0.0.0.0"), 6969);
+            let address = String::from(&config::get().lock().unwrap().message.address);
+            let port = config::get().lock().unwrap().message.port;
+
+            let socket = get_reusable_socket(address, port);
 
             // continuously read next udp packet
             loop {

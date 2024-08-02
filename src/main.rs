@@ -1,4 +1,3 @@
-use std::error::Error;
 use crate::error::RecvMessageError;
 
 mod csi;
@@ -15,8 +14,5 @@ mod throwie {
 
 #[tokio::main]
 async fn main() -> Result<(), RecvMessageError> {
-    let address = String::from(&config::get().lock().unwrap().message.address);
-    let port = config::get().lock().unwrap().message.port;
-
-    message::get_message(address, port).await
+    message::get_message().await
 }

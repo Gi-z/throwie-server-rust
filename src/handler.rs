@@ -13,11 +13,6 @@ fn csi_metrics_measurement() -> String {
     config::get().lock().unwrap().influx.csi_metrics_measurement.clone()
 }
 
-pub struct MessageHandler {
-    frame_map: Arc<DashMap<String, CSIReading>>
-}
-
-
 pub fn handle_message(m: MessageData, f: &Arc<DashMap<String, CSIReading>>) -> Result<Vec<WriteQuery>, RecvMessageError> {
     match m.format {
         MessageType::Telemetry => handle_telemetry(m),
@@ -62,10 +57,10 @@ fn handle_compressed_csi(message: MessageData, f: &Arc<DashMap<String, CSIReadin
     let decompressed_data = inflate::inflate_bytes_zlib(compressed_payload.as_slice()).unwrap();
     let frame_count = decompressed_data.len() / compressed_frame_size;
 
-    // if (decompressed_data.len() % compressed_frame_size) > 0 {
-    //     println!("Could not determine the number of frames in compressed container from {:?} with size: {:?}.", message.addr, decompressed_data.len());
-    //     return Err(RecvMessageError::MessageDecompressionError())
-    // }
+    if (decompressed_data.len() % compressed_frame_size) > 0 {
+        println!("Could not determine the number of frames in compressed container from {:?} with size: {:?}.", message.addr, decompressed_data.len());
+        return Err(RecvMessageError::MessageDecompressionError())
+    }
 
     // println!("Frames in container: {:?} from {}", frame_count, message.addr);
 
