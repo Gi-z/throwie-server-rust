@@ -119,27 +119,27 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIStore
                 reading.correlation_coefficient = corr;
                 reading.interval = new_interval;
 
-                if stored_frame.counter > WINDOW_SIZE + 1 {
+                if stored_frame.counter > WINDOW_SIZE {
                     // reset counter
                     stored_frame.counter = 0;
 
-                    // let first_frame: &CSIReading = stored_frame.buffer.peek().unwrap();
-                    // let mut prev_frame: &CSIReading = stored_frame.buffer.peek().unwrap();
-                    // let mut prim_vec = Vec::new();
-                    // for frame in stored_frame.buffer.iter() {
-                    //     if frame.timestamp_us < prev_frame.timestamp_us {
-                    //         print!("a");
-                    //         // frame received out of order. drop this one.
-                    //         continue;
-                    //     } else if (frame.timestamp_us - first_frame.timestamp_us) > 1000000 { // if the window exceeds the time frame (1s in microseconds)
-                    //         print!("got here lol");
-                    //         break;
-                    //     } else {
-                    //         prim_vec.push(frame.csi_matrix.clone());
-                    //         prev_frame = frame;
-                    //     }
-                    // }
-                    //
+                    let first_frame: &CSIReading = stored_frame.buffer.peek().unwrap();
+                    let mut prev_frame: &CSIReading = stored_frame.buffer.peek().unwrap();
+                    let mut prim_vec = Vec::new();
+                    for frame in stored_frame.buffer.iter() {
+                        if frame.timestamp_us < prev_frame.timestamp_us {
+                            print!("a");
+                            // frame received out of order. drop this one.
+                            continue;
+                        } else if (frame.timestamp_us - first_frame.timestamp_us) > 1000000 { // if the window exceeds the time frame (1s in microseconds)
+                            print!("got here lol");
+                            break;
+                        } else {
+                            prim_vec.push(frame.csi_matrix.clone());
+                            prev_frame = frame;
+                        }
+                    }
+
                     // let mut matrix = Array::zeros((prim_vec.len(), csi::ACTIVE_SUBCARRIERS));
                     // for (i, frame) in prim_vec.iter().enumerate() {
                     //     for j in range(0, frame.len()) {
@@ -149,14 +149,18 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIStore
                     //
                     // print!("{:?}", matrix.shape());
                     // print!("first_frame: {} frame: {}\n", first_frame.timestamp_us, stored_frame.buffer.back().unwrap().timestamp_us);
-                    //
+
                     // let resampled_sequence = sci_rs::signal::resample::resample(matrix.slice_axis(Axis(0), ), WINDOW_SIZE);
 
                     // compute metrics. for fun. and profit.
                     let corr_window = csi::get_correlation_coefficient(
-                        stored_frame.buffer.peek().unwrap().csi_matrix.clone(),
-                        &stored_frame.buffer.back().unwrap().csi_matrix.clone()
+                        prim_vec.first().unwrap().clone(),
+                        &prim_vec.last().unwrap().clone()
                     );
+                    // let corr_window = csi::get_correlation_coefficient(
+                    //     stored_frame.buffer.peek().unwrap().csi_matrix.clone(),
+                    //     &stored_frame.buffer.back().unwrap().csi_matrix.clone()
+                    // );
 
                     reading.correlation_coefficient = corr_window;
                 } else {
