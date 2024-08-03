@@ -128,11 +128,9 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIStore
                     let mut prim_vec = Vec::new();
                     for frame in stored_frame.buffer.iter() {
                         if frame.timestamp_us < prev_frame.timestamp_us {
-                            print!("a");
                             // frame received out of order. drop this one.
                             continue;
                         } else if (frame.timestamp_us - first_frame.timestamp_us) > 1000000 { // if the window exceeds the time frame (1s in microseconds)
-                            print!("got here lol");
                             break;
                         } else {
                             prim_vec.push(frame.csi_matrix.clone());
