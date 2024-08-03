@@ -154,8 +154,8 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIStore
 
                     // compute metrics. for fun. and profit.
                     let corr_window = csi::get_correlation_coefficient(
-                        prim_vec.first().unwrap().clone(),
-                        &prim_vec.last().unwrap().clone()
+                        stored_frame.buffer.peek().unwrap().csi_matrix.clone(),
+                        &stored_frame.buffer.back().unwrap().csi_matrix.clone()
                     );
 
                     reading.correlation_coefficient = corr_window;
