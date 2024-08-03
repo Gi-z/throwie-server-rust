@@ -9,6 +9,12 @@ const CONFIG_PATH: &str = "src/config/app.toml";
 
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
+pub struct Buffer {
+    pub window_size: usize,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[allow(unused)]
 pub struct Message {
     pub address: String,
     pub csi_frame_size: i16,
@@ -31,6 +37,7 @@ pub struct Influx {
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
 pub struct AppConfig {
+    pub buffer: Buffer,
     pub message: Message,
     pub influx: Influx,
 }

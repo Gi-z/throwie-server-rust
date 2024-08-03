@@ -3,6 +3,9 @@ address = "0.0.0.0"
 port = 6969
 csi_frame_size = 170
 
+[buffer]
+window_size = 50
+
 [influx]
 protocol = "http"
 address = "csi-hub"

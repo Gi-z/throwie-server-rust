@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use ndarray_stats::CorrelationExt;
 
 use influxdb::Timestamp;
@@ -8,14 +9,14 @@ use crate::throwie::CsiMessage;
 use ndarray::{Array, Ix2, Axis, concatenate};
 use ndarray_stats;
 use prost::{DecodeError, Message};
+use ringbuffer::AllocRingBuffer;
 use crate::error::RecvMessageError;
 
-//const FILTER_SUBCARRIERS: [u8; 11] = [0, 1, 28, 29, 30, 31, 32, 33, 34, 35, 36];
-const FILTER_SUBCARRIERS: [u8; 4] = [0, 1, 2, 3];
-//const REQUIRED_SUBCARRIERS: [usize; 53] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
-const REQUIRED_SUBCARRIERS: [usize; 60] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
+const FILTER_SUBCARRIERS: [u8; 11] = [0, 1, 28, 29, 30, 31, 32, 33, 34, 35, 36];
+const REQUIRED_SUBCARRIERS: [usize; 53] = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
+// const REQUIRED_SUBCARRIERS: [usize; 60] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63];
 
-const ACTIVE_SUBCARRIERS: usize = 60;
+pub const ACTIVE_SUBCARRIERS: usize = 53;
 
 #[derive(Clone, InfluxDbWriteable, Debug)]
 pub struct CSIReading {
@@ -28,7 +29,14 @@ pub struct CSIReading {
     #[influxdb(tag)] pub mac: String,
     #[influxdb(tag)] pub antenna: i8,
 
-    #[influxdb(ignore)] pub csi_matrix: Array<f32, Ix2>
+    #[influxdb(ignore)] pub csi_matrix: Array<f32, Ix2>,
+    #[influxdb(ignore)] pub timestamp_us: u128
+}
+
+pub struct CSIStore {
+    pub reading: CSIReading,
+    pub buffer: AllocRingBuffer<CSIReading>,
+    pub counter: usize
 }
 
 impl CSIReading {
@@ -57,7 +65,8 @@ impl CSIReading {
             mac,
             sequence_identifier,
             interval,
-            csi_matrix
+            csi_matrix,
+            timestamp_us
         }
     }
 }
@@ -96,7 +105,7 @@ fn get_csi_matrix(msg: &CsiMessage) -> Result<Array<f32, Ix2>, RecvMessageError>
     let scaling_factor: f32 = get_scaling_factor(&csi_matrix, msg.rssi.clone());
 
     for n in 1..ACTIVE_SUBCARRIERS {
-        //filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]];
+        // filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]];
         filtered_csi_matrix[[0, n]] = csi_matrix[[0, n]] * scaling_factor.sqrt();
     }
 
