@@ -43,7 +43,7 @@ jobs:
 
       - name: Install protobuf library
         run: |
-           sudo apt-get install libprotobuf-dev
+           sudo apt-get install libprotobuf-dev libprotoc-dev protobuf-compiler
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
