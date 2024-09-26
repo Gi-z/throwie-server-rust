@@ -40,7 +40,6 @@ jobs:
 
       - name: Install protoc inside cross container
         run: |
-          cross run --target ${{ matrix.target }} \
           bash -c "apt-get update && apt-get install -y protobuf-compiler"
 
       # Run cargo test using cross
