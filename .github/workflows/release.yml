@@ -36,7 +36,7 @@ jobs:
 
       - name: Install protoc inside cross container
         run: |
-          docker run --rm -v "$PWD/target:/target:Z" \
+          docker run --rm -v "$PWD:/project:Z" \
           rustembedded/cross:${{ matrix.target }} \
           bash -c "apt-get update && apt-get install -y protobuf-compiler"
 
