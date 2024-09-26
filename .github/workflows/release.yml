@@ -42,6 +42,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
           override: true
+      
+      - name: protoc
+        uses: dictav/action-protoc@v0.0.3
 
       - name: setup-protoc-action
         # You may pin to the exact commit or the version.
