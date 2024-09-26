@@ -15,8 +15,8 @@ extern crate prost_build;
 fn main() {
     prost_build::compile_protos(
         &[
-            "src/proto/csimsg.proto",
-            "src/proto/telemetrymsg.proto"
+            "./src/proto/csimsg.proto",
+            "./src/proto/telemetrymsg.proto"
         ],
-        &["src/proto/"]).unwrap();
+        &["./src/proto"]).unwrap();
 }
