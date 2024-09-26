@@ -51,7 +51,7 @@ jobs:
           args: --release --locked --target ${{ matrix.target }}
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3
+        uses: zchee/setup-protoc@v1
 
       - name: Build release binary
         uses: actions-rs/cargo@v1
