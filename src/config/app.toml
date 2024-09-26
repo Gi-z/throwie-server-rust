@@ -4,7 +4,7 @@ port = 6969
 csi_frame_size = 170
 
 [buffer]
-window_size = 50
+window_size = 51
 
 [influx]
 protocol = "http"
