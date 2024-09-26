@@ -13,6 +13,7 @@ env:
   PROJECT_NAME: throwie-server
   REPO_NAME: spectralops/rust-ci-release-template
   BREW_TAP: jondot/homebrew-tap
+  PROTOC: /opt/hostedtoolcache/protoc/3.20.3/x64/bin
 
 jobs:
   dist:
