@@ -40,7 +40,7 @@ jobs:
 
       - name: Install protoc inside cross container
         run: |
-          bash -c "apt-get update && apt-get install -y protobuf-compiler"
+          bash -c "sudo apt-get update && sudo apt-get install -y protobuf-compiler"
 
       # Run cargo test using cross
       - name: Run cargo test
