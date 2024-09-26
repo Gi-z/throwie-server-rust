@@ -12,6 +12,7 @@ env:
   BIN_NAME: throwie-server
   PROJECT_NAME: throwie-server
   REPO_NAME: throwie-server
+  RUST_BACKTRACE: 1
 
 jobs:
   dist:
