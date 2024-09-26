@@ -18,7 +18,7 @@ jobs:
     name: Dist
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false # don't fail other jobs if one fails
+      fail-fast: false
       matrix:
         build: [aarch64-linux]
         include:
@@ -47,19 +47,17 @@ jobs:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
 
-      - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: ${{ matrix.cross }}
-          command: test
-          args: --release --locked --target ${{ matrix.target }}
+      - name: Run cargo test inside cross container
+        run: |
+          docker run --rm -v "$PWD:/project:Z" \
+          rustembedded/cross:${{ matrix.target }} \
+          bash -c "cross test --release --locked --target ${{ matrix.target }}"
 
-      - name: Build release binary
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: ${{ matrix.cross }}
-          command: build
-          args: --release --locked --target ${{ matrix.target }}
+      - name: Build release binary inside cross container
+        run: |
+          docker run --rm -v "$PWD:/project:Z" \
+          rustembedded/cross:${{ matrix.target }} \
+          bash -c "cross build --release --locked --target ${{ matrix.target }}"
 
       - name: Strip release binary
         run: |
