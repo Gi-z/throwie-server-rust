@@ -11,7 +11,7 @@ on:
 env:
   BIN_NAME: throwie-server
   PROJECT_NAME: throwie-server
-  REPO_NAME: spectralops/rust-ci-release-template
+  REPO_NAME: throwie-server
 
 jobs:
   dist:
