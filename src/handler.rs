@@ -151,14 +151,14 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIStore
                     // let resampled_sequence = sci_rs::signal::resample::resample(matrix.slice_axis(Axis(0), ), WINDOW_SIZE);
 
                     // compute metrics. for fun. and profit.
+                    //let corr_window = csi::get_correlation_coefficient(
+                    //    prim_vec.first().unwrap().clone(),
+                    //    &prim_vec.last().unwrap().clone()
+                    //);
                     let corr_window = csi::get_correlation_coefficient(
-                        prim_vec.first().unwrap().clone(),
-                        &prim_vec.last().unwrap().clone()
+                        stored_frame.buffer.peek().unwrap().csi_matrix.clone(),
+                        &stored_frame.buffer.back().unwrap().csi_matrix.clone()
                     );
-                    // let corr_window = csi::get_correlation_coefficient(
-                    //     stored_frame.buffer.peek().unwrap().csi_matrix.clone(),
-                    //     &stored_frame.buffer.back().unwrap().csi_matrix.clone()
-                    // );
 
                     reading.correlation_coefficient = corr_window;
                 } else {
