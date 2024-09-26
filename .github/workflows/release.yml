@@ -42,14 +42,6 @@ jobs:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
           override: true
-      
-      - name: protoc
-        uses: dictav/action-protoc@v0.0.3
-
-      - name: setup-protoc-action
-        # You may pin to the exact commit or the version.
-        # uses: 4w3Official/setup-protoc-action@77452c8ae6ce4e5b5df0de2f41473e866e0a7b2b
-        uses: 4w3Official/setup-protoc-action@v1
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
@@ -57,6 +49,9 @@ jobs:
           use-cross: ${{ matrix.cross }}
           command: test
           args: --release --locked --target ${{ matrix.target }}
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
 
       - name: Build release binary
         uses: actions-rs/cargo@v1
