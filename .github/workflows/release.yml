@@ -41,9 +41,11 @@ jobs:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
 
-      - name: Install protobuf library
+      - name: Install protoc inside cross container
         run: |
-           sudo apt-get install libprotobuf-dev libprotoc-dev protobuf-compiler
+          docker run --rm -v "$PWD/target:/target:Z" \
+            rustembedded/cross:${{ matrix.target }} \
+            bash -c "apt-get update && apt-get install -y protobuf-compiler"
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
