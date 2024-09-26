@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.0
         with:
           submodules: true
 
@@ -85,7 +85,7 @@ jobs:
             cp "target/${{ matrix.target }}/release/$BIN_NAME" "dist/"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4.4.0
         with:
           name: bins-${{ matrix.build }}
           path: dist
@@ -96,11 +96,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.0
         with:
           submodules: false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4.4.0
         # with:
         #   path: dist
       # - run: ls -al ./dist
