@@ -34,38 +34,22 @@ jobs:
         with:
           submodules: true
 
+      # Install cross
+      - name: Install cross
+        run: cargo install cross
+
       - name: Install protoc inside cross container
         run: |
-          docker run --rm -v "$PWD:/project:Z" \
-          rustembedded/cross:${{ matrix.target }} \
+          cross run --target ${{ matrix.target }} \
           bash -c "apt-get update && apt-get install -y protobuf-compiler"
 
-      - name: Install ${{ matrix.rust }} toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          target: ${{ matrix.target }}
+      # Run cargo test using cross
+      - name: Run cargo test
+        run: cross test --release --locked --target ${{ matrix.target }}
 
-      - name: Run cargo test inside cross container
-        run: |
-          docker run --rm -v "$PWD:/project:Z" \
-          rustembedded/cross:${{ matrix.target }} \
-          bash -c "cross test --release --locked --target ${{ matrix.target }}"
-
-      - name: Build release binary inside cross container
-        run: |
-          docker run --rm -v "$PWD:/project:Z" \
-          rustembedded/cross:${{ matrix.target }} \
-          bash -c "cross build --release --locked --target ${{ matrix.target }}"
-
-      - name: Strip release binary
-        run: |
-          docker run --rm -v \
-            "$PWD/target:/target:Z" \
-            rustembedded/cross:${{ matrix.target }} \
-            aarch64-linux-gnu-strip \
-            /target/${{ matrix.target }}/release/$BIN_NAME
+      # Build the release binary using cross
+      - name: Build release binary
+        run: cross build --release --locked --target ${{ matrix.target }}
 
       - name: Build archive
         shell: bash
