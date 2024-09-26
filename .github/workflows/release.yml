@@ -41,14 +41,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
           target: ${{ matrix.target }}
 
-      - name: Build protobuf library
+      - name: Install protobuf library
         run: |
-           sudo apt-get install g++ git bazel
-           git clone https://github.com/protocolbuffers/protobuf.git
-           cd protobuf
-           git submodule update --init --recursive
-           bazel build :protoc :protobuf
-           cp bazel-bin/protoc /usr/local/bin
+           sudo apt-get install libprotobuf-dev
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1
