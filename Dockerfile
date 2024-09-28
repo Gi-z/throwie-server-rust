@@ -12,4 +12,4 @@ COPY ./throwie-server /app/throwie-server
 RUN chmod +x /app/throwie-server
 
 # Set the entrypoint to run the executable
-ENTRYPOINT ["./app/throwie-server"]
+ENTRYPOINT ["/app/throwie-server"]
