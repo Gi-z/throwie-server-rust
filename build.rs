@@ -18,5 +18,6 @@ fn main() {
             "./src/proto/csimsg.proto",
             "./src/proto/telemetrymsg.proto"
         ],
-        &["./src/proto"]).unwrap();
+        &["./src/proto"])
+        .expect("error compiling protobuf files");
 }
