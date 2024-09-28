@@ -28,6 +28,13 @@ jobs:
           UNIQUE_TAG="${{ env.VERSION }}-build-${{ github.run_number }}"
           echo "Generated tag: $UNIQUE_TAG"
           echo "TAG_NAME=$UNIQUE_TAG" >> $GITHUB_ENV
+      - name: Ensure Cargo.lock exists
+        run: |
+          if [ ! -f Cargo.lock ]; then
+            cargo generate-lockfile
+          fi
+
+      # Step 4: Rust Cache (with valid key configuration)
       - name: Set up Rust Cache
         uses: actions/cache@v3
         with:
@@ -35,7 +42,7 @@ jobs:
             target/aarch64-unknown-linux-gnu  # Cache cross-compilation target directory
             ~/.cargo/registry                 # Cache registry
             ~/.cargo/git                      # Cache git dependencies
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-aarch64
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}-aarch64
           restore-keys: |
             ${{ runner.os }}-cargo-aarch64
       - name: Build binary
