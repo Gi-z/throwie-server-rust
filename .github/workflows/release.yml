@@ -44,6 +44,8 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: "target/${{ env.TARGET }}/release/throwie-server"
+          files: |
+            target/${{ env.TARGET }}/release/throwie-server
+            src/config/app.toml
           tag_name: ${{ env.TAG_NAME }}
           token: ${{ secrets.GH_TOKEN }}
