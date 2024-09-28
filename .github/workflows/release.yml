@@ -8,114 +8,23 @@ on:
     - 'v[0-9]+.[0-9]+.[0-9]+'
     ## - release
 
-env:
-  BIN_NAME: throwie-server
-  PROJECT_NAME: throwie-server
-  REPO_NAME: throwie-server
-  RUST_BACKTRACE: 1
-
 jobs:
-  build:
+  release:
+    name: Release - aarch64
     runs-on: ubuntu-latest
-
-    services:
-      docker:
-        image: paulusminus/cross-aarch64-unknown-linux-gnu:1.8.0 # Using cross for aarch64
-
+    
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v3
-
-    - name: Set up Rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: aarch64-unknown-linux-gnu
-        override: true
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y protobuf-compiler libprotobuf-dev # Install protoc and libprotobuf
-
-    - name: Install cross for cross-compilation
-      run: cargo install cross --git https://github.com/cross-rs/cross
-
-    - name: Build the project for aarch64
-      run: |
-        cross build --target aarch64-unknown-linux-gnu --release
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: aarch64-binary
-        path: target/aarch64-unknown-linux-gnu/release/<your-binary-name>
-
-  publish:
-    name: Publish
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4.2.0
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v0
         with:
-          submodules: false
-
-      - uses: actions/download-artifact@v4.4.0
-        # with:
-        #   path: dist
-      # - run: ls -al ./dist
-      - run: ls -al bins-*
-
-      - name: Calculate tag name
-        run: |
-          name=dev
-          if [[ $GITHUB_REF == refs/tags/v* ]]; then
-            name=${GITHUB_REF:10}
-          fi
-          echo ::set-output name=val::$name
-          echo TAG=$name >> $GITHUB_ENV
-        id: tagname
-
-      - name: Build archive
-        shell: bash
-        run: |
-          set -ex
-
-          rm -rf tmp
-          mkdir tmp
-          mkdir dist
-
-          for dir in bins-* ; do
-              platform=${dir#"bins-"}
-              unset exe
-              if [[ $platform =~ "windows" ]]; then
-                  exe=".exe"
-              fi
-              pkgname=$PROJECT_NAME-$TAG-$platform
-              mkdir tmp/$pkgname
-              # cp LICENSE README.md tmp/$pkgname
-              mv bins-$platform/$BIN_NAME$exe tmp/$pkgname
-              chmod +x tmp/$pkgname/$BIN_NAME$exe
-
-              if [ "$exe" = "" ]; then
-                  tar cJf dist/$pkgname.tar.xz -C tmp $pkgname
-              else
-                  (cd tmp && 7z a -r ../dist/$pkgname.zip $pkgname)
-              fi
-          done
-
-      - name: Upload binaries to release
-        uses: svenstaro/upload-release-action@v2
+          command: build
+          target: aarch64-unknown-linux-gnu
+          args: "--locked --release"
+          strip: true
+      - name: Publish artifacts and release
+        uses: houseabsolute/actions-rust-release@v0
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: dist/*
-          file_glob: true
-          tag: ${{ steps.tagname.outputs.val }}
-          overwrite: true
-
-      - name: Extract version
-        id: extract-version
-        run: |
-          printf "::set-output name=%s::%s\n" tag-name "${GITHUB_REF#refs/tags/}"
-
+          binary-name: throwie-server
+          target: aarch64-unknown-linux-gnu
