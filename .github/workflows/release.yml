@@ -20,6 +20,8 @@ jobs:
         id: get_version
         with:
           path: "version.txt"
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2.7.3
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v0.0.15
         with:
@@ -30,4 +32,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: "target/aarch64-unknown-linux-gnu/release/throwie-server"
-          asset_content_type: application/octet-stream
+          tag_name: ${ steps.get_version.outputs.contents }
