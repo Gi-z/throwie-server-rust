@@ -42,4 +42,4 @@ jobs:
           platforms: linux/arm/v8
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/throwie-server-rust:latest
+            ghcr.io/gi-z/throwie-server-rust:latest
