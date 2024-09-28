@@ -1,5 +1,6 @@
 # Dockerfile
 FROM alpine:latest
+LABEL org.opencontainers.image.source https://github.com/gi-z/throwie-server-rust
 
 # Set the working directory
 WORKDIR /app
