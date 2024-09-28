@@ -33,4 +33,4 @@ jobs:
         with:
           files: "target/aarch64-unknown-linux-gnu/release/throwie-server"
           tag_name: ${ steps.get_version.outputs.contents }
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_TOKEN }}
