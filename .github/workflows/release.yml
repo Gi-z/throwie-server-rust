@@ -25,5 +25,5 @@ jobs:
       - name: Publish artifacts and release
         uses: houseabsolute/actions-rust-release@v0
         with:
-          binary-name: throwie-server
+          executable-name: throwie-server
           target: aarch64-unknown-linux-gnu
