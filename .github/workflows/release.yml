@@ -15,11 +15,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: "Read file contents"
-        uses: guibranco/github-file-reader-action-v2@latest
+      - name: Read version from version.txt
         id: get_version
-        with:
-          path: "version.txt"
+        run: |
+          VERSION=$(cat version.txt)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - name: Generate unique tag
+        id: generate_tag
+        run: |
+          UNIQUE_TAG="${{ env.VERSION }}-build-${{ github.run_number }}"
+          echo "Generated tag: $UNIQUE_TAG"
+          echo "TAG_NAME=$UNIQUE_TAG" >> $GITHUB_ENV
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2.7.3
       - name: Build binary
@@ -32,5 +38,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: "target/aarch64-unknown-linux-gnu/release/throwie-server"
-          tag_name: ${ steps.get_version.outputs.contents }
+          tag_name: ${{ env.UNIQUE_TAG }}
           token: ${{ secrets.GH_TOKEN }}
