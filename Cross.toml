@@ -6,4 +6,4 @@ pre-build = [                                  # additional commands to run prio
     "apt-get --assume-yes install libprotobuf-dev:$CROSS_DEB_ARCH protobuf-compiler:$CROSS_DEB_ARCH"
 ]   
 [build.env]
-passthrough = ["RUST_BACKTRACE=1"]
+passthrough = ["RUST_BACKTRACE=full"]
