@@ -14,7 +14,7 @@ jobs:
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Read version from version.txt
         id: get_version
         run: |
@@ -26,17 +26,30 @@ jobs:
           UNIQUE_TAG="${{ env.VERSION }}-build-${{ github.run_number }}"
           echo "Generated tag: $UNIQUE_TAG"
           echo "TAG_NAME=$UNIQUE_TAG" >> $GITHUB_ENV
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2.7.3
+      - name: Set up Rust Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            target/aarch64-unknown-linux-gnu  # Cache cross-compilation target directory
+            ~/.cargo/registry                 # Cache registry
+            ~/.cargo/git                      # Cache git dependencies
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-aarch64
+          restore-keys: |
+            ${{ runner.os }}-cargo-aarch64
       - name: Build binary
         uses: houseabsolute/actions-rust-cross@v0.0.15
         with:
           command: build
           target: aarch64-unknown-linux-gnu
           args: "--locked --release"
+      - uses: rickstaa/action-create-tag@v1
+        id: "tag_create"
+        with:
+          tag: ${{ env.UNIQUE_TAG }}
+          tag_exists_error: false
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: "target/aarch64-unknown-linux-gnu/release/throwie-server"
-          tag_name: deploy
+          tag_name: ${{ env.UNIQUE_TAG }}
           token: ${{ secrets.GH_TOKEN }}
