@@ -8,7 +8,7 @@ window_size = 50
 
 [influx]
 protocol = "http"
-address = "csi-hub"
+address = "0.0.0.0"
 port = 8086
 #username = "influx"
 write_batch_size = 50
