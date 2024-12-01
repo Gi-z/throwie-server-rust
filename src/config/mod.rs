@@ -23,15 +23,10 @@ pub struct Message {
 
 #[derive(Clone, Debug, Deserialize)]
 #[allow(unused)]
-pub struct Influx {
-    pub protocol: String,
-    pub address: String,
-    pub port: i16,
-    pub write_batch_size: i32,
-
-    pub database: String,
-    pub csi_metrics_measurement: String,
-    pub sensor_telemetry_measurement: String,
+pub struct Timescale {
+    pub url: String,
+    pub batch_time: u64,
+    pub write_batch_size: i32
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -39,7 +34,7 @@ pub struct Influx {
 pub struct AppConfig {
     pub buffer: Buffer,
     pub message: Message,
-    pub influx: Influx,
+    pub timescale: Timescale
 }
 
 pub fn build() -> AppConfig{

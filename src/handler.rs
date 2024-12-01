@@ -1,23 +1,21 @@
-use std::ptr::null;
-use influxdb::{WriteQuery, InfluxDbWriteable};
-
 use crate::{config, csi, telemetry};
 use crate::error::RecvMessageError;
 use crate::message::{MessageData, MessageType};
 
 use std::sync::Arc;
-
+use chrono::TimeDelta;
 use dashmap::DashMap;
-use ndarray::{Array, Axis};
-use num::range;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
-use crate::csi::{CSIReading, CSIStore};
+use crate::csi::{CSIStorageEntry, CSIStore};
+use crate::telemetry::TelemetryEntry;
 
-fn csi_metrics_measurement() -> String {
-    config::get().lock().unwrap().influx.csi_metrics_measurement.clone()
+#[derive(Clone)]
+pub enum HandledMessage {
+    CSIStorage(CSIStorageEntry),
+    Telemetry(TelemetryEntry)
 }
 
-pub fn handle_message(m: MessageData, f: &Arc<DashMap<String, CSIStore>>) -> Result<Vec<WriteQuery>, RecvMessageError> {
+pub fn handle_message(m: MessageData, f: &Arc<DashMap<String, CSIStore>>) -> Result<Vec<HandledMessage>, RecvMessageError> {
     match m.format {
         MessageType::Telemetry => handle_telemetry(m),
         MessageType::CSI => handle_csi(m, f),
@@ -25,30 +23,31 @@ pub fn handle_message(m: MessageData, f: &Arc<DashMap<String, CSIStore>>) -> Res
     }
 }
 
-fn handle_telemetry(message: MessageData) -> Result<Vec<WriteQuery>, RecvMessageError> {
-    let reading = parse_telemetry(&message.payload)?;
-    Ok(vec![reading.into_query(&config::get().lock().unwrap().influx.sensor_telemetry_measurement)])
+fn handle_telemetry(message: MessageData) -> Result<Vec<HandledMessage>, RecvMessageError> {
+    // Ok(vec![reading.into_query(&config::get().lock().unwrap().influx.sensor_telemetry_measurement)])
+    Ok(vec![parse_telemetry(&message.payload)?])
 }
 
-fn parse_telemetry(expected_payload: &[u8]) -> Result<telemetry::TelemetryReading, RecvMessageError> {
+fn parse_telemetry(expected_payload: &[u8]) -> Result<HandledMessage, RecvMessageError> {
     let protobuf_parse_result = telemetry::parse_telemetry_protobuf(expected_payload)?;
-    Ok(telemetry::get_reading(&protobuf_parse_result))
+    Ok(telemetry::get_entry(&protobuf_parse_result))
 }
 
-fn handle_csi(message: MessageData, f: &Arc<DashMap<String, CSIStore>>) -> Result<Vec<WriteQuery>, RecvMessageError> {
+fn handle_csi(message: MessageData, f: &Arc<DashMap<String, CSIStore>>) -> Result<Vec<HandledMessage>, RecvMessageError> {
     let frame = parse_csi(&message.payload)?;
     let mapped_reading = map_reading(frame, f);
 
-    Ok(vec![mapped_reading.into_query(csi_metrics_measurement())])
+    // Ok(vec![mapped_reading.into_query(csi_metrics_measurement())])
+    Ok(vec![mapped_reading])
 }
 
-fn parse_csi(expected_payload: &[u8]) -> Result<CSIReading, RecvMessageError>  {
+fn parse_csi(expected_payload: &[u8]) -> Result<HandledMessage, RecvMessageError>  {
     let frame = csi::parse_csi_protobuf(&expected_payload)?;
-    csi::get_reading(&frame)
+    csi::get_storage_entry(&frame)
 }
 
-fn handle_compressed_csi(message: MessageData, f: &Arc<DashMap<String, CSIStore>>) -> Result<Vec<WriteQuery>, RecvMessageError> {
-    let mut write_queries: Vec<WriteQuery> = Vec::new();
+fn handle_compressed_csi(message: MessageData, f: &Arc<DashMap<String, CSIStore>>) -> Result<Vec<HandledMessage>, RecvMessageError> {
+    let mut write_queries: Vec<HandledMessage> = Vec::new();
 
     let compressed_frame_size = (config::get().lock().unwrap().message.csi_frame_size + 1) as usize;
 
@@ -80,21 +79,31 @@ fn handle_compressed_csi(message: MessageData, f: &Arc<DashMap<String, CSIStore>
             continue
         };
 
-        let Ok(reading) = csi::get_reading(&msg) else {
+        let Ok(reading) = csi::get_storage_entry(&msg) else {
             println!("Invalid frame in decompressed array.");
             continue
         };
 
         let mapped_reading = map_reading(reading, f);
-        write_queries.push(mapped_reading.into_query(csi_metrics_measurement()));
+        // write_queries.push(mapped_reading.into_query(csi_metrics_measurement()));
+        write_queries.push(mapped_reading);
     }
 
     Ok(write_queries)
 }
 
-fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIStore>>) -> CSIReading {
-    let sequence_identifier = reading.sequence_identifier;
-    let key = format!("{}/{}", reading.mac.clone(), reading.antenna.clone());
+fn map_reading(mut msg: HandledMessage, frame_map: &Arc<DashMap<String, CSIStore>>) -> HandledMessage {
+    let mut entry: CSIStorageEntry;
+
+    match msg {
+        HandledMessage::CSIStorage(m) => entry = m,
+        HandledMessage::Telemetry(m) => {
+            panic!("aaaa")
+        }
+    }
+
+    let sequence_identifier = entry.sequence_identifier;
+    let key = format!("{}/{}", entry.sensor_id.clone(), entry.antenna.clone());
 
     let WINDOW_SIZE: usize = config::get().lock().unwrap().buffer.window_size;
 
@@ -103,37 +112,37 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIStore
             // Get interval
             let stored_reading = &stored_frame.reading;
 
-            let ret_sequence: i32 = stored_reading.sequence_identifier;
+            let ret_sequence = stored_reading.sequence_identifier;
             let new_interval = sequence_identifier - ret_sequence;
 
             // check if this frame arrived out of sequence
             // if so, don't generate metrics as they won't mean anything.
             if sequence_identifier < ret_sequence {
-                reading.interval = ret_sequence;
+                entry.interval = ret_sequence;
                 // TODO: Add telemetry message to indicate this occurred.
             } else {
                 // Get PCC
-                let new_matrix = reading.csi_matrix.clone();
-                let corr = csi::get_correlation_coefficient(new_matrix.clone(), &stored_reading.csi_matrix);
+                let new_matrix = entry.amplitude.clone();
+                let corr = csi::get_correlation_coefficient(new_matrix.clone(), &stored_reading.amplitude);
 
-                reading.correlation_coefficient = corr;
-                reading.interval = new_interval;
+                entry.correlation_coefficient = corr;
+                entry.interval = new_interval;
 
                 if stored_frame.counter > WINDOW_SIZE {
                     // reset counter
                     stored_frame.counter = 0;
 
-                    let first_frame: &CSIReading = stored_frame.buffer.peek().unwrap();
-                    let mut prev_frame: &CSIReading = stored_frame.buffer.peek().unwrap();
+                    let first_frame: &CSIStorageEntry = stored_frame.buffer.peek().unwrap();
+                    let mut prev_frame: &CSIStorageEntry = stored_frame.buffer.peek().unwrap();
                     let mut prim_vec = Vec::new();
                     for frame in stored_frame.buffer.iter() {
-                        if frame.timestamp_us < prev_frame.timestamp_us {
+                        if frame.timestamp < prev_frame.timestamp {
                             // frame received out of order. drop this one.
                             continue;
-                        } else if (frame.timestamp_us - first_frame.timestamp_us) > 1000000 { // if the window exceeds the time frame (1s in microseconds)
+                        } else if (frame.timestamp - first_frame.timestamp) > TimeDelta::microseconds(1000000) { // if the window exceeds the time frame (1s in microseconds)
                             break;
                         } else {
-                            prim_vec.push(frame.csi_matrix.clone());
+                            prim_vec.push(frame.amplitude.clone());
                             prev_frame = frame;
                         }
                     }
@@ -156,37 +165,39 @@ fn map_reading(mut reading: CSIReading, frame_map: &Arc<DashMap<String, CSIStore
                     //    &prim_vec.last().unwrap().clone()
                     //);
                     let corr_window = csi::get_correlation_coefficient(
-                        stored_frame.buffer.peek().unwrap().csi_matrix.clone(),
-                        &stored_frame.buffer.back().unwrap().csi_matrix.clone()
+                        stored_frame.buffer.peek().unwrap().amplitude.clone(),
+                        &stored_frame.buffer.back().unwrap().amplitude.clone()
                     );
 
-                    reading.correlation_coefficient = corr_window;
+                    entry.correlation_coefficient = corr_window;
                 } else {
                     // print!("{}\n", stored_frame.buffer.len());
-                    stored_frame.buffer.push(reading.clone());
+                    stored_frame.buffer.push(entry.clone());
                     stored_frame.counter += 1;
 
-                    reading.correlation_coefficient = stored_frame.reading.correlation_coefficient;
+                    entry.correlation_coefficient = stored_frame.reading.correlation_coefficient;
                 }
             }
 
-            if reading.interval > 65000 {
+            if entry.interval > 65000 {
                 let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
-                reading.interval = sequence_identifier + ret_diff_from_max;
+                entry.interval = sequence_identifier + ret_diff_from_max;
             }
 
+            // println!("{:?}", entry);
+
             // *stored_frame = reading.clone();
-            stored_frame.reading = reading.clone();
+            stored_frame.reading = entry.clone();
         }
         None => {
             frame_map.insert(key.clone(), CSIStore {
                 buffer: AllocRingBuffer::new(WINDOW_SIZE),
-                reading: reading.clone(),
+                reading: entry.clone(),
                 counter: 0
             });
-            println!("Added new client with key: {} (time: {})", key.clone(), reading.time.clone());
+            println!("Added new client with key: {} (time: {})", key.clone(), entry.timestamp.clone());
         }
     }
 
-    reading
+    HandledMessage::CSIStorage(entry)
 }

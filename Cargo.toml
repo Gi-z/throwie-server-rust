@@ -7,24 +7,23 @@ edition = "2021"
 
 [dependencies]
 inflate = "0.4.5"
-influxdb = { version = "0.7.2", features = ["derive"] }
-ndarray = "0.15.6"
-ndarray-stats = "0.5.1"
-num = "0.4.1"
-num_enum = "*"
-thiserror = "*"
-tokio = { version = "1.36.0", features = ["full", "socket2"] }
+num = "0.4.3"
+num_enum = "0.7.3"
+thiserror = "2.0.3"
+tokio = { version = "1.41.1", features = ["full", "socket2"] }
 prost = "0.13.3"
 prost-types = "0.13.3"
-serde = "1.0.197"
-serde_derive = "1.0.197"
-toml = "0.8.10"
-socket2 = { version = "0.5.6"}
+serde = "1.0.215"
+serde_derive = "1.0.215"
+toml = "0.8.19"
+socket2 = { version = "0.5.8"}
 num_cpus = "1.16.0"
-dashmap = "5.5.3"
+dashmap = "6.1.0"
 ringbuffer = "*"
-sci-rs = { version = "0.3.15", features = ["std"] }
+tokio-postgres = {  version = "0.7.12", features = ["with-chrono-0_4"] }
+futures = "0.3.31"
+chrono = "0.4.38"
 
 [build-dependencies]
-protoc-rust = "2.28.0"
+protoc-rust = "3.0.0-alpha.2"
 prost-build = "0.13.3"

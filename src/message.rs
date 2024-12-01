@@ -5,17 +5,15 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 use dashmap::DashMap;
-use influxdb::WriteQuery;
 
 use tokio::net::UdpSocket;
-use tokio::sync::{Mutex, watch};
-use tokio::time::sleep;
+use tokio::sync::mpsc;
 
 use crate::{config, handler};
-use crate::db::{DbWatchConfig, InfluxClient, start_batch_watcher};
 use crate::error::RecvMessageError;
+use crate::handler::HandledMessage;
+use crate::dbmanager::start_db_watcher;
 
 const UDP_MESSAGE_MAX_SIZE: usize = 2000;
 
@@ -45,8 +43,6 @@ fn get_reusable_socket(host: String, port: u16) -> UdpSocket {
         socket2::Type::DGRAM,
         None,
     ).unwrap();
-    // udp_sock.set_reuse_port(true).unwrap();
-    // udp_sock.set_cloexec(true).unwrap();
     udp_sock.set_reuse_address(true).unwrap();
     udp_sock.set_nonblocking(true).unwrap();
     udp_sock.bind(&socket2::SockAddr::from(addr)).unwrap();
@@ -56,42 +52,23 @@ fn get_reusable_socket(host: String, port: u16) -> UdpSocket {
 
 pub async fn get_message() -> Result<(), RecvMessageError> {
     let num_cpus = num_cpus::get();
+    let handler_tasks = num_cpus - 1;
 
-    let db_tasks = 1;
-    let handler_tasks = num_cpus -1;
+    println!("Running MessageServer with {} handler tasks.", handler_tasks);
 
-    println!("Running MessageServer with {} db task and {} handler tasks.", db_tasks, handler_tasks);
-    sleep(Duration::from_millis(1000)).await;
-
-    // get batch write threshold from appconfig
-    let batch_size = config::get().lock().unwrap().influx.write_batch_size as usize;
-
-    // get reusable handles to mutex for db client and temp batch vector, and our frame map
-    let batch: Arc<Mutex<Vec<WriteQuery>>> = Arc::new(Mutex::new(Vec::new()));
-    let db = Arc::new(Mutex::new(InfluxClient::new()));
-
-    // create channel for receiving db write notification
-    let (tx, rx) = watch::channel(false);
-    let arc_tx = Arc::new(tx);
+    // create channel for receiving batch append notification
+    let (db_append_batch_tx, db_append_batch_rx) = mpsc::channel::<Vec<HandledMessage>>(100);
+    // start db manager to handle incoming data writes.
+    start_db_watcher(db_append_batch_rx).await;
 
     let arc_frame_map = Arc::new(DashMap::new());
 
-    // start thread to receive/handle db write batch limit notifications
-    start_batch_watcher(DbWatchConfig{
-        tx: arc_tx.clone(),
-        rx,
-        batch: batch.clone(),
-        db: db.clone()
-    });
-
-    // num workers = num logical cpus
     for _ in 0..handler_tasks {
         // get local handles for tx and batch
-        let batch = batch.clone();
-        let tx = arc_tx.clone();
+        let task_append_batch_tx = db_append_batch_tx.clone();
         let frame_map = arc_frame_map.clone();
 
-        // spawn worker thread
+        // spawn worker threads
         tokio::spawn(async move {
             // different UdpSocket instance per worker
             // but the same connection is reused
@@ -121,17 +98,8 @@ pub async fn get_message() -> Result<(), RecvMessageError> {
 
                 // send messagedata to format-specific handler
                 // returns a vector which may contain writequeries to send to db
-                let handled_message = handler::handle_message(recv_message, &frame_map).unwrap();
-
-                // lock the batch so we can add new writequeries
-                // lock lasts until the handle is out of scope
-                let mut local_batch_handle = batch.lock().await;
-                local_batch_handle.extend(handled_message);
-
-                // if the batch exceeds write threshold, send db write notification
-                if local_batch_handle.len() > batch_size {
-                    tx.send(true).unwrap();
-                }
+                let handled_vector = handler::handle_message(recv_message, &frame_map).unwrap();
+                task_append_batch_tx.send(handled_vector).await.expect("Batch append channel destroyed.")
             }
         }).await.expect("TODO: panic message");
     }
