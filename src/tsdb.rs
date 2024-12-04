@@ -32,7 +32,7 @@ impl TimescaleClient {
                 antenna, rssi, noise_floor, interval) FROM STDIN BINARY")
             .await.unwrap();
 
-        let mut writer = BinaryCopyInWriter::new(sink,
+        let writer = BinaryCopyInWriter::new(sink,
             &[Type::VARCHAR, Type::TIMESTAMP, Type::BYTEA, Type::BYTEA, Type::INT4,
                     Type::INT2, Type::INT2, Type::INT2, Type::INT4]);
 

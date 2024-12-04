@@ -92,12 +92,12 @@ fn handle_compressed_csi(message: MessageData, f: &Arc<DashMap<String, CSIStore>
     Ok(write_queries)
 }
 
-fn map_reading(mut msg: HandledMessage, frame_map: &Arc<DashMap<String, CSIStore>>) -> HandledMessage {
+fn map_reading(msg: HandledMessage, frame_map: &Arc<DashMap<String, CSIStore>>) -> HandledMessage {
     let mut entry: CSIStorageEntry;
 
     match msg {
         HandledMessage::CSIStorage(m) => entry = m,
-        HandledMessage::Telemetry(m) => {
+        HandledMessage::Telemetry(_) => {
             panic!("aaaa")
         }
     }
@@ -105,7 +105,7 @@ fn map_reading(mut msg: HandledMessage, frame_map: &Arc<DashMap<String, CSIStore
     let sequence_identifier = entry.sequence_identifier;
     let key = format!("{}/{}", entry.sensor_id.clone(), entry.antenna.clone());
 
-    let WINDOW_SIZE: usize = config::get().lock().unwrap().buffer.window_size;
+    let window_size: usize = config::get().lock().unwrap().buffer.window_size;
 
     match frame_map.get_mut(&key) {
         Some(mut stored_frame) => {
@@ -128,7 +128,7 @@ fn map_reading(mut msg: HandledMessage, frame_map: &Arc<DashMap<String, CSIStore
                 entry.correlation_coefficient = corr;
                 entry.interval = new_interval;
 
-                if stored_frame.counter > WINDOW_SIZE {
+                if stored_frame.counter > window_size {
                     // reset counter
                     stored_frame.counter = 0;
 
@@ -191,7 +191,7 @@ fn map_reading(mut msg: HandledMessage, frame_map: &Arc<DashMap<String, CSIStore
         }
         None => {
             frame_map.insert(key.clone(), CSIStore {
-                buffer: AllocRingBuffer::new(WINDOW_SIZE),
+                buffer: AllocRingBuffer::new(window_size),
                 reading: entry.clone(),
                 counter: 0
             });

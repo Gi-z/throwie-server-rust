@@ -6,7 +6,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex, Notify};
-use tokio::time::sleep;
 
 pub struct DatabaseTaskManager {
     append_batch_rx: Mutex<mpsc::Receiver<Vec<HandledMessage>>>,
