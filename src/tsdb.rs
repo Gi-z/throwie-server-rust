@@ -34,7 +34,7 @@ impl TimescaleClient {
 
         let mut writer = BinaryCopyInWriter::new(sink,
             &[Type::VARCHAR, Type::TIMESTAMP, Type::BYTEA, Type::BYTEA, Type::INT4,
-                    Type::INT2, Type::INT2, Type::INT2]);
+                    Type::INT2, Type::INT2, Type::INT2, Type::INT4]);
 
         // Pin the writer since it will be used in async operations
         pin_mut!(writer);
