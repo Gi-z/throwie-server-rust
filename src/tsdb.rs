@@ -29,7 +29,7 @@ impl TimescaleClient {
         let sink = self.client
             .copy_in("COPY csi_data \
                 (sensor_id, timestamp, imag, real, sequence_identifier, \
-                antenna, rssi, noise_floor) FROM STDIN BINARY")
+                antenna, rssi, noise_floor, interval) FROM STDIN BINARY")
             .await.unwrap();
 
         let mut writer = BinaryCopyInWriter::new(sink,
@@ -51,6 +51,7 @@ impl TimescaleClient {
             row.push(&entry.antenna);
             row.push(&entry.rssi);
             row.push(&entry.noise_floor);
+            row.push(&entry.interval);
             writer.as_mut().write(&row).await.unwrap();
         }
 

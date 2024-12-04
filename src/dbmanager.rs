@@ -48,7 +48,7 @@ impl DatabaseTaskManager {
     pub fn start_watcher_jobs(self: Arc<Self>) {
         let tasks: Vec<fn(Arc<Self>) -> Pin<Box<dyn Future<Output = ()> + Send>>> = vec![
             |this| Box::pin(async { this.wait_for_timer().await }),
-            |this| Box::pin(async { this.wait_for_incoming_batch().await }),
+            |this| Box::pin(async { this.wait_for_incoming_data().await }),
         ];
 
         for task in tasks {
@@ -70,7 +70,7 @@ impl DatabaseTaskManager {
         }
     }
 
-    async fn wait_for_incoming_batch(self: Arc<Self>) {
+    async fn wait_for_incoming_data(self: Arc<Self>) {
         loop {
             let mut append_batch_rx = self.append_batch_rx.lock().await;
 

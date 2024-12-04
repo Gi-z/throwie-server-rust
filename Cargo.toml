@@ -9,8 +9,8 @@ edition = "2021"
 inflate = "0.4.5"
 num = "0.4.3"
 num_enum = "0.7.3"
-thiserror = "2.0.3"
-tokio = { version = "1.41.1", features = ["full", "socket2"] }
+thiserror = "2.0.4"
+tokio = { version = "1.42.0", features = ["full", "socket2"] }
 prost = "0.13.3"
 prost-types = "0.13.3"
 serde = "1.0.215"
