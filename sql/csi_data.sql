@@ -7,7 +7,7 @@ CREATE TABLE csi_data (
     antenna SMALLINT,
     rssi SMALLINT,
     noise_floor SMALLINT,
-    interval SMALLINT,
+    interval INTEGER,
     PRIMARY KEY (sensor_id, timestamp),
 
     CONSTRAINT check_imag_size CHECK (octet_length(imag) = 64),
