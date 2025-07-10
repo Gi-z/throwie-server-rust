@@ -33,7 +33,7 @@ impl TimescaleClient {
             .await.unwrap();
 
         let writer = BinaryCopyInWriter::new(sink,
-            &[Type::VARCHAR, Type::TIMESTAMP, Type::BYTEA, Type::BYTEA, Type::INT4,
+            &[Type::MACADDR, Type::TIMESTAMP, Type::BYTEA, Type::BYTEA, Type::INT4,
                     Type::INT2, Type::INT2, Type::INT2, Type::INT4]);
 
         // Pin the writer since it will be used in async operations
@@ -73,7 +73,7 @@ impl TimescaleClient {
             .await.unwrap();
 
         let writer = BinaryCopyInWriter::new(sink,
-           &[Type::TEXT, Type::TIMESTAMP, Type::INT4, Type::INT4, Type::TEXT, Type::INT2,
+           &[Type::VARCHAR, Type::TIMESTAMP, Type::INT4, Type::INT4, Type::TEXT, Type::INT2,
                  Type::INT2, Type::BOOL]);
 
         // Pin the writer since it will be used in async operations

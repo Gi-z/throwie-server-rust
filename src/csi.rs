@@ -1,13 +1,16 @@
+extern crate eui48;
+use eui48::MacAddress;
+
 use crate::throwie::CsiMessage;
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime};
 
 // use ndarray::{Array, Ix2, Axis, concatenate};
 // use ndarray_stats;
 use prost::{DecodeError, Message};
 use ringbuffer::AllocRingBuffer;
 
-use crate::handler::HandledMessage;
+use crate::handler::{HandledMessage, InjectorReference};
 use crate::error::RecvMessageError;
 
 // const FILTER_SUBCARRIERS: [u8; 11] = [0, 1, 28, 29, 30, 31, 32, 33, 34, 35, 36];
@@ -19,7 +22,7 @@ pub const TOTAL_SUBCARRIERS: usize = 64;
 
 #[derive(Clone, Debug)]
 pub struct CSIStorageEntry {
-    pub sensor_id: String,
+    pub sensor_id: MacAddress,
     pub timestamp: NaiveDateTime,
 
     pub imag: Vec<u8>,
@@ -44,15 +47,47 @@ pub struct CSIStore {
 }
 
 impl CSIStorageEntry {
-    pub fn new(msg: &CsiMessage) -> Self{
-        let mac = format!(
-            "{:X}{:X}{:X}",
-            msg.src_mac[3],
-            msg.src_mac[4],
-            msg.src_mac[5]
-        );
+    pub fn new(msg: &CsiMessage, injector_reference: &InjectorReference) -> Self{
+        let mac_arr: [u8; 6] = msg.src_mac.clone().try_into().unwrap();
+        let mac = MacAddress::new(mac_arr);
 
-        let time = NaiveDateTime::from_timestamp_micros(msg.timestamp).unwrap();
+        let sequence_identifier = msg.sequence_identifier;
+        let time: NaiveDateTime;
+
+        // NOTE: ignoring original timestamp in favour of sequence derived timestamp
+        if injector_reference.sequence_identifier == -1 {
+            time = NaiveDateTime::from_timestamp_micros(msg.timestamp).unwrap();
+            println!("using collector timestamp");
+        } else {
+            // for now let's assume we never drop a telemetry packet.
+            // so timestamp is last_known_injector_timestamp + 0.01*(last_known_injector_sequence_identifier - sequence_identifier)
+
+            // seq is 4050
+            // we have 3584 reference timestamp
+            // so our timestamp is reference + (4050 - 3584)*0.01
+
+            const MAX_SEQ: u16 = 4096;
+
+            let mut delta_seq = sequence_identifier as i32 - injector_reference.sequence_identifier as i32;
+            if delta_seq < 0 {
+                // Handle wraparound by adding MAX_SEQ
+                delta_seq += MAX_SEQ as i32;
+
+                // println!("wraparound happened lol")
+            }
+
+            let calculated_timestamp = injector_reference.timestamp.timestamp_micros() + (delta_seq * 10_000) as i64;
+            time = NaiveDateTime::from_timestamp_micros(calculated_timestamp).unwrap();
+
+            // println!("Actual timestamp: {} Generated timestamp: {}", msg.timestamp, calculated_timestamp);
+            // println!("Timestamp diff: {}", calculated_timestamp - msg.timestamp);
+
+            let timestamp_calc_diff = calculated_timestamp - msg.timestamp;
+
+            if timestamp_calc_diff > 1000000 {
+                println!("Found timestamp variation of {}ns for sensor_id: {}", timestamp_calc_diff, mac);
+            }
+        }
 
         let (imag, real) = get_raw_csi_components(msg);
         let (amplitude, phase) = get_csi_amplitude_phase(msg);
@@ -199,6 +234,6 @@ pub fn get_correlation_coefficient(x: Vec<f32>, y: &Vec<f32>) -> f32 {
 //     rssi_pwr / norm_vec_mag
 // }
 
-pub fn get_storage_entry(msg: &CsiMessage) -> Result<HandledMessage, RecvMessageError> {
-    Ok(HandledMessage::CSIStorage(CSIStorageEntry::new(msg)))
+pub fn get_storage_entry(msg: &CsiMessage, injector_timestamp: &InjectorReference) -> Result<HandledMessage, RecvMessageError> {
+    Ok(HandledMessage::CSIStorage(CSIStorageEntry::new(msg, injector_timestamp)))
 }

@@ -1,5 +1,5 @@
 CREATE TABLE csi_data (
-    sensor_id VARCHAR,
+    sensor_id MACADDR,
     timestamp TIMESTAMP NOT NULL,
     imag BYTEA,
     real BYTEA,
@@ -14,3 +14,4 @@ CREATE TABLE csi_data (
     CONSTRAINT check_real_size CHECK (octet_length(real) = 64)
 );
 SELECT create_hypertable('csi_data', 'timestamp');
+SELECT add_retention_policy('csi_data', INTERVAL '100 hours');

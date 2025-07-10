@@ -5,6 +5,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use chrono::{DateTime, NaiveDateTime};
 use dashmap::DashMap;
 
 use tokio::net::UdpSocket;
@@ -12,7 +13,7 @@ use tokio::sync::mpsc;
 
 use crate::{config, handler};
 use crate::error::RecvMessageError;
-use crate::handler::HandledMessage;
+use crate::handler::{CSIHandler, HandledMessage, InjectorReference, MessageHandler, TelemetryHandler};
 use crate::dbmanager::start_db_watcher;
 
 const UDP_MESSAGE_MAX_SIZE: usize = 2000;
@@ -62,11 +63,26 @@ pub async fn get_message() -> Result<(), RecvMessageError> {
     start_db_watcher(db_append_batch_rx).await;
 
     let arc_frame_map = Arc::new(DashMap::new());
+    let arc_timestamp_store = Arc::new(DashMap::new());
+
+    //TODO: do this somewhere better
+    arc_timestamp_store.insert("main".to_lowercase(), InjectorReference{
+        timestamp: NaiveDateTime::from_timestamp_micros(0).unwrap(),
+        sequence_identifier: -1
+    });
 
     for _ in 0..handler_tasks {
         // get local handles for tx and batch
         let task_append_batch_tx = db_append_batch_tx.clone();
         let frame_map = arc_frame_map.clone();
+        let timestamp_store = arc_timestamp_store.clone();
+
+        let window_size = config::get().lock().unwrap().buffer.window_size;
+
+        let csi_handler = CSIHandler::new(frame_map.clone(), timestamp_store.clone(), window_size);
+        let telemetry_handler = TelemetryHandler::new(timestamp_store.clone());
+
+        let handler = MessageHandler::new(csi_handler, telemetry_handler);
 
         // spawn worker threads
         tokio::spawn(async move {
@@ -98,7 +114,8 @@ pub async fn get_message() -> Result<(), RecvMessageError> {
 
                 // send messagedata to format-specific handler
                 // returns a vector which may contain writequeries to send to db
-                let handled_vector = handler::handle_message(recv_message, &frame_map).unwrap();
+                // let handled_vector = handler::handle_message(recv_message, &frame_map, &injector_timing_map).unwrap();
+                let handled_vector = handler.handle_message(recv_message).unwrap();
                 task_append_batch_tx.send(handled_vector).await.expect("Batch append channel destroyed.")
             }
         }).await.expect("TODO: panic message");

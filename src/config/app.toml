@@ -7,6 +7,6 @@ csi_frame_size = 170
 window_size = 50
 
 [timescale]
-url = "postgres://postgres:password@csi-hub:5432"
+url = "postgres://postgres:password@yellow:5432"
 batch_time = 5
 write_batch_size = 500

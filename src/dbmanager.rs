@@ -59,11 +59,11 @@ impl DatabaseTaskManager {
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_secs(self.batch_time)) => {
-                    println!("Batch write triggered by timer expiration.");
+                    // println!("Batch write triggered by timer expiration.");
                     self.write_signal.notify_one();
                 }
                 _ = self.reset_timer_signal.notified() => {
-                    println!("Batch timer reset.");
+                    // println!("Batch timer reset.");
                 }
             }
         }
@@ -79,12 +79,12 @@ impl DatabaseTaskManager {
                     batch_handle.extend(msg_vec);
 
                     if batch_handle.len() > self.batch_size_limit {
-                        println!("Batch size exceeds limit, triggering write.");
+                        // println!("Batch size exceeds limit, triggering write.");
                         self.write_signal.notify_one();
                     }
                 }
                 _ = self.write_signal.notified() => {
-                    println!("Received batch write notification.");
+                    // println!("Received batch write notification.");
 
                     let batch_to_write = {
                         let mut batch_handle = self.batch.lock().await;
