@@ -55,10 +55,10 @@ impl CSIStorageEntry {
         let time: NaiveDateTime;
 
         // NOTE: ignoring original timestamp in favour of sequence derived timestamp
-        if injector_reference.sequence_identifier == -1 {
+        // if injector_reference.sequence_identifier == -1 {
             time = NaiveDateTime::from_timestamp_micros(msg.timestamp).unwrap();
-            println!("using collector timestamp");
-        } else {
+            // println!("using collector timestamp");
+        // } else {
             // for now let's assume we never drop a telemetry packet.
             // so timestamp is last_known_injector_timestamp + 0.01*(last_known_injector_sequence_identifier - sequence_identifier)
 
@@ -66,28 +66,28 @@ impl CSIStorageEntry {
             // we have 3584 reference timestamp
             // so our timestamp is reference + (4050 - 3584)*0.01
 
-            const MAX_SEQ: u16 = 4096;
-
-            let mut delta_seq = sequence_identifier as i32 - injector_reference.sequence_identifier as i32;
-            if delta_seq < 0 {
-                // Handle wraparound by adding MAX_SEQ
-                delta_seq += MAX_SEQ as i32;
-
-                // println!("wraparound happened lol")
-            }
-
-            let calculated_timestamp = injector_reference.timestamp.timestamp_micros() + (delta_seq * 10_000) as i64;
-            time = NaiveDateTime::from_timestamp_micros(calculated_timestamp).unwrap();
-
-            // println!("Actual timestamp: {} Generated timestamp: {}", msg.timestamp, calculated_timestamp);
-            // println!("Timestamp diff: {}", calculated_timestamp - msg.timestamp);
-
-            let timestamp_calc_diff = calculated_timestamp - msg.timestamp;
-
-            if timestamp_calc_diff > 1000000 {
-                println!("Found timestamp variation of {}ns for sensor_id: {}", timestamp_calc_diff, mac);
-            }
-        }
+        //     const MAX_SEQ: u16 = 4096;
+        //
+        //     let mut delta_seq = sequence_identifier as i32 - injector_reference.sequence_identifier as i32;
+        //     if delta_seq < 0 {
+        //         // Handle wraparound by adding MAX_SEQ
+        //         delta_seq += MAX_SEQ as i32;
+        //
+        //         // println!("wraparound happened lol")
+        //     }
+        //
+        //     let calculated_timestamp = injector_reference.timestamp.timestamp_micros() + (delta_seq * 10_000) as i64;
+        //     time = NaiveDateTime::from_timestamp_micros(calculated_timestamp).unwrap();
+        //
+        //     // println!("Actual timestamp: {} Generated timestamp: {}", msg.timestamp, calculated_timestamp);
+        //     // println!("Timestamp diff: {}", calculated_timestamp - msg.timestamp);
+        //
+        //     let timestamp_calc_diff = calculated_timestamp - msg.timestamp;
+        //
+        //     if timestamp_calc_diff > 1000000 {
+        //         println!("Found timestamp variation of {}ns for sensor_id: {}", timestamp_calc_diff, mac);
+        //     }
+        // }
 
         let (imag, real) = get_raw_csi_components(msg);
         let (amplitude, phase) = get_csi_amplitude_phase(msg);

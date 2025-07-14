@@ -1,0 +1,12 @@
+syntax = "proto2";
+
+package throwie;
+
+message BME280Reading {
+    required int64 timestamp = 1 [default = 0];
+    required bytes device_mac = 2 [default = "DEADBEEF"];
+    required string version = 3 [default = "-1"];
+    required float temperature = 4 [default = -1];
+    required float humidity = 5 [default = -1];
+    required float pressure = 6 [default = -1];
+}

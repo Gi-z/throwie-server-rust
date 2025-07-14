@@ -8,6 +8,9 @@ mod telemetry;
 mod handler;
 mod tsdb;
 mod dbmanager;
+mod bme280;
+// mod messages;
+mod pir;
 
 mod throwie {
     include!(concat!(env!("OUT_DIR"), "/throwie.rs"));

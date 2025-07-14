@@ -1,0 +1,10 @@
+syntax = "proto2";
+
+package throwie;
+
+message PIRReading {
+    required int64 timestamp = 1 [default = 0];
+    required bytes device_mac = 2 [default = "DEADBEEF"];
+    required string version = 3 [default = "-1"];
+    required bool level = 4 [default = false];
+}

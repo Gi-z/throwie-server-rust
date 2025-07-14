@@ -1,4 +1,4 @@
-use crate::{config, csi, telemetry};
+use crate::{bme280, config, csi, pir, telemetry};
 use crate::error::RecvMessageError;
 use crate::message::{MessageData, MessageType};
 
@@ -7,13 +7,19 @@ use chrono::{DateTime, NaiveDateTime, TimeDelta, Utc};
 use dashmap::DashMap;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use toml::value::Time;
+use crate::bme280::BME280Entry;
 use crate::csi::{CSIStorageEntry, CSIStore};
 use crate::telemetry::TelemetryEntry;
+use crate::pir::PIREntry;
+use crate::throwie::Bme280Reading;
+use crate::throwie::PirReading;
 
 #[derive(Clone)]
 pub enum HandledMessage {
     CSIStorage(CSIStorageEntry),
-    Telemetry(TelemetryEntry)
+    Telemetry(TelemetryEntry),
+    BME280(BME280Entry),
+    PIR(PIREntry)
 }
 
 pub struct InjectorReference {
@@ -29,6 +35,9 @@ pub struct CSIHandler {
     window_size: usize,
 }
 
+pub struct BME280Handler {}
+pub struct PIRHandler {}
+
 pub struct TelemetryHandler {
     timestamp_store: Arc<TimestampStore>
 }
@@ -36,22 +45,55 @@ pub struct TelemetryHandler {
 pub struct MessageHandler {
     csi_handler: CSIHandler,
     telemetry_handler: TelemetryHandler,
+    bme280_handler: BME280Handler,
+    pir_handler: PIRHandler
 }
 
 impl MessageHandler {
 
     pub fn new(csi_handler: CSIHandler, telemetry_handler: TelemetryHandler) -> Self {
+        let bme280_handler = BME280Handler::new();
+        let pir_handler = PIRHandler::new();
+
         Self {
             csi_handler,
-            telemetry_handler
+            telemetry_handler,
+            bme280_handler,
+            pir_handler
         }
     }
     pub fn handle_message(&self, m: MessageData) -> Result<Vec<HandledMessage>, RecvMessageError> {
         match m.format {
             MessageType::Telemetry => self.telemetry_handler.handle(m),
             MessageType::CSI => self.csi_handler.handle(m),
-            MessageType::CSICompressed => self.csi_handler.handle_compressed(m)
+            MessageType::CSICompressed => self.csi_handler.handle_compressed(m),
+            MessageType::BME280 => self.bme280_handler.handle(m),
+            MessageType::PIR => self.pir_handler.handle(m)
         }
+    }
+}
+
+impl BME280Handler {
+    pub fn new() -> Self { Self { } }
+
+    pub fn handle(&self, message: MessageData) -> Result<Vec<HandledMessage>, RecvMessageError> {
+        let bme280_entry = BME280Entry::new(&bme280::parse_protobuf(&message.payload)?);
+
+        // println!("bme280 reading: {:?}", bme280_entry);
+
+        Ok(vec![HandledMessage::BME280(bme280_entry)])
+    }
+}
+
+impl PIRHandler {
+    pub fn new() -> Self { Self { } }
+
+    pub fn handle(&self, message: MessageData) -> Result<Vec<HandledMessage>, RecvMessageError> {
+        let pir_entry = PIREntry::new(&pir::parse_protobuf(&message.payload)?);
+
+        // println!("pir reading: {:?}", pir_entry);
+
+        Ok(vec![HandledMessage::PIR(pir_entry)])
     }
 }
 
@@ -161,9 +203,7 @@ impl CSIHandler {
 
         match msg {
             HandledMessage::CSIStorage(m) => entry = m,
-            HandledMessage::Telemetry(_) => {
-                panic!("aaaa")
-            }
+            _ => {panic!("aaaa")}
         }
 
         let sequence_identifier = entry.sequence_identifier;

@@ -23,7 +23,9 @@ const UDP_MESSAGE_MAX_SIZE: usize = 2000;
 pub enum MessageType {
     Telemetry = 0x01,
     CSI = 0x02,
-    CSICompressed = 0x03
+    CSICompressed = 0x03,
+    BME280 = 0x4,
+    PIR = 0x5
 }
 
 #[derive(Debug)]
@@ -114,7 +116,6 @@ pub async fn get_message() -> Result<(), RecvMessageError> {
 
                 // send messagedata to format-specific handler
                 // returns a vector which may contain writequeries to send to db
-                // let handled_vector = handler::handle_message(recv_message, &frame_map, &injector_timing_map).unwrap();
                 let handled_vector = handler.handle_message(recv_message).unwrap();
                 task_append_batch_tx.send(handled_vector).await.expect("Batch append channel destroyed.")
             }

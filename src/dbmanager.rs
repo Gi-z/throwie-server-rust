@@ -114,19 +114,25 @@ impl DatabaseTaskManager {
 
         let mut csi_msgs = Vec::with_capacity(batch_copy.len());
         let mut telemetry_msgs = Vec::with_capacity(batch_copy.len());
+        let mut bme280_msgs = Vec::with_capacity(batch_copy.len());
+        let mut pir_msgs = Vec::with_capacity(batch_copy.len());
 
         // Split batch into its constituent batches
         for msg in batch_copy {
             match msg {
                 HandledMessage::CSIStorage(m) => csi_msgs.push(m),
                 HandledMessage::Telemetry(m) => telemetry_msgs.push(m),
+                HandledMessage::BME280(m) => bme280_msgs.push(m),
+                HandledMessage::PIR(m) => pir_msgs.push(m),
             }
         }
 
         // Lock the DB client to issue the write
         let mut db_handle = self.db.lock().await;
         db_handle.write_csi_data_batch(&csi_msgs).await;
-        db_handle.write_telemetry_batch(&telemetry_msgs).await
+        db_handle.write_telemetry_batch(&telemetry_msgs).await;
+        db_handle.write_bme280_batch(&bme280_msgs).await;
+        db_handle.write_pir_batch(&pir_msgs).await;
     }
 }
 

@@ -3,9 +3,11 @@ use futures::pin_mut;
 use tokio_postgres::{Client, NoTls};
 use tokio_postgres::binary_copy::BinaryCopyInWriter;
 use tokio_postgres::types::{ToSql, Type};
+use crate::bme280::BME280Entry;
 use crate::config;
 use crate::config::Timescale;
 use crate::csi::CSIStorageEntry;
+use crate::pir::PIREntry;
 use crate::telemetry::TelemetryEntry;
 
 pub struct TimescaleClient {
@@ -91,6 +93,74 @@ impl TimescaleClient {
             row.push(&entry.device_type);
             row.push(&entry.message_type);
             row.push(&entry.is_eth);
+            writer.as_mut().write(&row).await.unwrap();
+        }
+
+        match writer.finish().await {
+            Ok(_) => println!("Write successful. Wrote {} throwie_pir rows.", given_batch.len()),
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    pub async fn write_bme280_batch(&mut self, given_batch: &[BME280Entry]) {
+        if given_batch.len() == 0 {
+            return;
+        }
+
+        let sink = self.client
+            .copy_in("COPY throwie_bme280 \
+                (sensor_id, timestamp, version, temperature, humidity, pressure) FROM STDIN BINARY")
+            .await.unwrap();
+
+        let writer = BinaryCopyInWriter::new(sink,
+             &[Type::MACADDR, Type::TIMESTAMP, Type::VARCHAR, Type::FLOAT4, Type::FLOAT4, Type::FLOAT4]);
+
+        // Pin the writer since it will be used in async operations
+        pin_mut!(writer);
+
+        let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+
+        for entry in given_batch {
+            row.clear();
+            row.push(&entry.sensor_id);
+            row.push(&entry.timestamp);
+            row.push(&entry.version);
+            row.push(&entry.temperature);
+            row.push(&entry.humidity);
+            row.push(&entry.pressure);
+            writer.as_mut().write(&row).await.unwrap();
+        }
+
+        match writer.finish().await {
+            Ok(_) => println!("Write successful. Wrote {} throwie_bme280 rows.", given_batch.len()),
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    pub async fn write_pir_batch(&mut self, given_batch: &[PIREntry]) {
+        if given_batch.len() == 0 {
+            return;
+        }
+
+        let sink = self.client
+            .copy_in("COPY throwie_pir \
+                (sensor_id, timestamp, version, level) FROM STDIN BINARY")
+            .await.unwrap();
+
+        let writer = BinaryCopyInWriter::new(sink,
+     &[Type::MACADDR, Type::TIMESTAMP, Type::VARCHAR, Type::BOOL]);
+
+        // Pin the writer since it will be used in async operations
+        pin_mut!(writer);
+
+        let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+
+        for entry in given_batch {
+            row.clear();
+            row.push(&entry.sensor_id);
+            row.push(&entry.timestamp);
+            row.push(&entry.version);
+            row.push(&entry.level);
             writer.as_mut().write(&row).await.unwrap();
         }
 
