@@ -281,8 +281,9 @@ impl CSIHandler {
                     }
                 }
 
-                if entry.interval > 65000 {
-                    let ret_diff_from_max = u16::MAX as i32 - ret_sequence;
+                // TODO: Fix likely off-by-one
+                if entry.interval >= 4095 {
+                    let ret_diff_from_max = 4096i32 - ret_sequence;
                     entry.interval = sequence_identifier + ret_diff_from_max;
                 }
 
