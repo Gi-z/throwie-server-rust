@@ -7,6 +7,8 @@ CREATE TABLE csi_data (
     antenna SMALLINT,
     rssi SMALLINT,
     noise_floor SMALLINT,
+    fft_gain SMALLINT,
+    agc_gain SMALLINT,
     interval INTEGER,
     PRIMARY KEY (sensor_id, timestamp),
 

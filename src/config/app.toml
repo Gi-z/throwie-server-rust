@@ -1,7 +1,7 @@
 [message]
 address = "0.0.0.0"
 port = 6969
-csi_frame_size = 170
+csi_frame_size = 174
 
 [buffer]
 window_size = 50

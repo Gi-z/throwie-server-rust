@@ -31,12 +31,12 @@ impl TimescaleClient {
         let sink = self.client
             .copy_in("COPY csi_data \
                 (sensor_id, timestamp, imag, real, sequence_identifier, \
-                antenna, rssi, noise_floor, interval) FROM STDIN BINARY")
+                antenna, rssi, noise_floor, fft_gain, agc_gain, interval) FROM STDIN BINARY")
             .await.unwrap();
 
         let writer = BinaryCopyInWriter::new(sink,
             &[Type::MACADDR, Type::TIMESTAMP, Type::BYTEA, Type::BYTEA, Type::INT4,
-                    Type::INT2, Type::INT2, Type::INT2, Type::INT4]);
+                    Type::INT2, Type::INT2, Type::INT2, Type::INT2, Type::INT2, Type::INT4]);
 
         // Pin the writer since it will be used in async operations
         pin_mut!(writer);
@@ -53,6 +53,8 @@ impl TimescaleClient {
             row.push(&entry.antenna);
             row.push(&entry.rssi);
             row.push(&entry.noise_floor);
+            row.push(&entry.fft_gain);
+            row.push(&entry.agc_gain);
             row.push(&entry.interval);
             writer.as_mut().write(&row).await.unwrap();
         }

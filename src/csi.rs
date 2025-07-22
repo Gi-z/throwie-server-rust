@@ -35,6 +35,8 @@ pub struct CSIStorageEntry {
     pub antenna: i16,
     pub rssi: i16,
     pub noise_floor: i16,
+    pub fft_gain: i16,
+    pub agc_gain: i16,
 
     pub correlation_coefficient: f32,
     pub interval: i32,
@@ -95,6 +97,8 @@ impl CSIStorageEntry {
         let antenna = msg.antenna as i16;
         let rssi = msg.rssi as i16;
         let noise_floor = (msg.noise_floor as i8) as i16;
+        let fft_gain = (msg.fft_gain as u8) as i16;
+        let agc_gain = (msg.agc_gain as u8) as i16;
         let sequence_identifier = msg.sequence_identifier as i32;
 
         let correlation_coefficient = -1.0;
@@ -114,6 +118,8 @@ impl CSIStorageEntry {
             rssi,
             noise_floor,
             sequence_identifier,
+            fft_gain,
+            agc_gain,
 
             correlation_coefficient,
             interval,

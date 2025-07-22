@@ -9,6 +9,8 @@ message CSIMessage {
     required uint32 antenna = 4 [default = 0];
     required sint32 rssi = 5 [default = 0];
     required sint32 noise_floor = 6 [default = 0];
-    required uint32 csi_crc32 = 7 [default = 0];
-    required bytes csi_data = 8;
+    required uint32 fft_gain = 7 [default = 0];
+    required uint32 agc_gain = 8 [default = 0];
+    required uint32 csi_crc32 = 9 [default = 0];
+    required bytes csi_data = 10;
 }
