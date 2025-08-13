@@ -18,23 +18,23 @@ pub struct CSIMetricsPCCEntry {
 
 const SAVGOL_WINDOW_SIZE: usize = 25;
 
-use biquad::{Biquad, Coefficients, DirectForm1, ToHertz, Q_BUTTERWORTH_F32};
-
-fn apply_bandpass_filter(data: &[f32], fs: f32, low_cut: f32, high_cut: f32) -> Vec<f32> {
-    let center_freq = (low_cut + high_cut) / 2.0;
-    let bandwidth = high_cut - low_cut;
-    let q = center_freq / bandwidth;
-
-    let coeffs = Coefficients::<f32>::from_params(
-        biquad::Type::BandPass,
-        fs.hz(),
-        center_freq.hz(),
-        q
-    ).unwrap();
-
-    let mut filter = DirectForm1::<f32>::new(coeffs);
-    data.iter().map(|&x| filter.run(x)).collect()
-}
+// use biquad::{Biquad, Coefficients, DirectForm1, ToHertz, Q_BUTTERWORTH_F32};
+//
+// fn apply_bandpass_filter(data: &[f32], fs: f32, low_cut: f32, high_cut: f32) -> Vec<f32> {
+//     let center_freq = (low_cut + high_cut) / 2.0;
+//     let bandwidth = high_cut - low_cut;
+//     let q = center_freq / bandwidth;
+//
+//     let coeffs = Coefficients::<f32>::from_params(
+//         biquad::Type::BandPass,
+//         fs.hz(),
+//         center_freq.hz(),
+//         q
+//     ).unwrap();
+//
+//     let mut filter = DirectForm1::<f32>::new(coeffs);
+//     data.iter().map(|&x| filter.run(x)).collect()
+// }
 
 // fn pca(data: &Array2<f32>, n_components: usize) -> (Array2<f32>, Array2<f32>) {
 //     // Step 1: Center data (mean subtraction)
