@@ -7,12 +7,10 @@ edition = "2021"
 
 [dependencies]
 inflate = "0.4.5"
-num = "0.4.3"
 num_enum = "0.7.3"
 thiserror = "2.0.8"
 tokio = { version = "1.45.1", features = ["full", "socket2"] }
 prost = "0.13.5"
-prost-types = "0.13.5"
 serde = "1.0.219"
 serde_derive = "1.0.219"
 toml = "0.8.23"
@@ -24,7 +22,12 @@ tokio-postgres = {  version = "0.7.13", features = ["with-chrono-0_4", "with-eui
 futures = "0.3.31"
 chrono = "0.4.41"
 eui48 = { version = "1.1.0"}
+sci-rs = { version = "0.4.1", features = ["std"] }
+ndarray = "0.16.1"
+staged-sg-filter = "0.2.3"
+biquad = "0.5.0"
+biquad-filters-rust = "0.1.3"
+#ndarray-linalg = { version = "0.17.0", features = ["openblas-system"]}
 
 [build-dependencies]
-protoc-rust = "3.0.0-alpha.2"
 prost-build = "0.13.5"

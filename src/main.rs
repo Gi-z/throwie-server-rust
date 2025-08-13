@@ -11,6 +11,7 @@ mod dbmanager;
 mod bme280;
 // mod messages;
 mod pir;
+mod csi_metrics;
 
 mod throwie {
     include!(concat!(env!("OUT_DIR"), "/throwie.rs"));

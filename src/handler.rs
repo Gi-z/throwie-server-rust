@@ -1,22 +1,25 @@
-use crate::{bme280, config, csi, pir, telemetry};
+use std::ops::Add;
+use crate::{bme280, config, csi, csi_metrics, pir, telemetry};
 use crate::error::RecvMessageError;
 use crate::message::{MessageData, MessageType};
 
 use std::sync::Arc;
-use chrono::{DateTime, NaiveDateTime, TimeDelta, Utc};
+use chrono::{NaiveDateTime, TimeDelta};
 use dashmap::DashMap;
+use ndarray::{Array2, Axis, s, stack};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
-use toml::value::Time;
 use crate::bme280::BME280Entry;
 use crate::csi::{CSIStorageEntry, CSIStore};
 use crate::telemetry::TelemetryEntry;
 use crate::pir::PIREntry;
-use crate::throwie::Bme280Reading;
-use crate::throwie::PirReading;
+
+use staged_sg_filter::sav_gol_f32;
+use crate::csi_metrics::CSIMetricsPCCEntry;
 
 #[derive(Clone)]
 pub enum HandledMessage {
     CSIStorage(CSIStorageEntry),
+    CSIMetricsPCC(CSIMetricsPCCEntry),
     Telemetry(TelemetryEntry),
     BME280(BME280Entry),
     PIR(PIREntry)
@@ -136,10 +139,9 @@ impl CSIHandler {
     }
     fn handle(&self, message: MessageData) -> Result<Vec<HandledMessage>, RecvMessageError> {
         let frame = self.parse(&message.payload)?;
-        let mapped_reading = self.map_reading(frame);
+        let mapped_reading = self.process_and_update_state(frame);
 
-        // Ok(vec![mapped_reading.into_query(csi_metrics_measurement())])
-        Ok(vec![mapped_reading])
+        Ok(mapped_reading)
     }
 
     fn parse(&self, expected_payload: &[u8]) -> Result<HandledMessage, RecvMessageError>  {
@@ -190,118 +192,85 @@ impl CSIHandler {
                 continue
             };
 
-            let mapped_reading = self.map_reading(reading);
+            let mapped_reading = self.process_and_update_state(reading);
             // write_queries.push(mapped_reading.into_query(csi_metrics_measurement()));
-            write_queries.push(mapped_reading);
+            write_queries.extend(mapped_reading);
         }
 
         Ok(write_queries)
     }
 
-    fn map_reading(&self, msg: HandledMessage) -> HandledMessage {
-        let mut entry: CSIStorageEntry;
+    fn process_and_update_state(&self, msg: HandledMessage) -> Vec<HandledMessage> {
+        let mut entry = match msg {
+            HandledMessage::CSIStorage(e) => e,
+            _ => panic!("Invalid message type passed to CSIHandler"),
+        };
 
-        match msg {
-            HandledMessage::CSIStorage(m) => entry = m,
-            _ => {panic!("aaaa")}
-        }
-
+        let mut result = vec![];
+        let key = format!("{}/{}", entry.sensor_id, entry.antenna);
         let sequence_identifier = entry.sequence_identifier;
-        let key = format!("{}/{}", entry.sensor_id.clone(), entry.antenna.clone());
 
-        match self.frame_map.get_mut(&key) {
-            Some(mut stored_frame) => {
-                // Get interval
-                let stored_reading = &stored_frame.reading;
+        if let Some(mut stored) = self.frame_map.get_mut(&key) {
+            let prev_entry = &stored.reading;
+            let new_interval = sequence_identifier - prev_entry.sequence_identifier;
 
-                let ret_sequence = stored_reading.sequence_identifier;
-                let new_interval = sequence_identifier - ret_sequence;
+            if sequence_identifier < prev_entry.sequence_identifier {
+                entry.interval = prev_entry.sequence_identifier;
+            } else {
+                let corr = csi::get_correlation_coefficient(
+                    entry.amplitude.clone(),
+                    &prev_entry.amplitude
+                );
+                entry.correlation_coefficient = corr;
+                entry.interval = new_interval;
 
-                // check if this frame arrived out of sequence
-                // if so, don't generate metrics as they won't mean anything.
-                if sequence_identifier < ret_sequence {
-                    entry.interval = ret_sequence;
-                    // TODO: Add telemetry message to indicate this occurred.
-                } else {
-                    // Get PCC
-                    let new_matrix = entry.amplitude.clone();
-                    let corr = csi::get_correlation_coefficient(new_matrix.clone(), &stored_reading.amplitude);
+                if stored.counter > self.window_size {
+                    stored.counter = 0;
 
-                    entry.correlation_coefficient = corr;
-                    entry.interval = new_interval;
+                    let prim_vec: Vec<_> = stored.buffer.iter()
+                        .filter(|f| f.timestamp >= stored.buffer.peek().unwrap().timestamp)
+                        .take_while(|f| (f.timestamp - stored.buffer.peek().unwrap().timestamp) <= TimeDelta::seconds(1))
+                        .map(|f| f.amplitude.clone())
+                        .collect();
 
-                    if stored_frame.counter > self.window_size {
-                        // reset counter
-                        stored_frame.counter = 0;
-
-                        let first_frame: &CSIStorageEntry = stored_frame.buffer.peek().unwrap();
-                        let mut prev_frame: &CSIStorageEntry = stored_frame.buffer.peek().unwrap();
-                        let mut prim_vec = Vec::new();
-                        for frame in stored_frame.buffer.iter() {
-                            if frame.timestamp < prev_frame.timestamp {
-                                // frame received out of order. drop this one.
-                                continue;
-                            } else if (frame.timestamp - first_frame.timestamp) > TimeDelta::microseconds(1000000) { // if the window exceeds the time frame (1s in microseconds)
-                                break;
-                            } else {
-                                prim_vec.push(frame.amplitude.clone());
-                                prev_frame = frame;
-                            }
+                    let mut matrix = Array2::<f32>::zeros((prim_vec.len(), csi::TOTAL_SUBCARRIERS));
+                    for (i, row) in prim_vec.iter().enumerate() {
+                        for j in 0..row.len() {
+                            matrix[[i, j]] = row[j];
                         }
-
-                        // let mut matrix = Array::zeros((prim_vec.len(), csi::ACTIVE_SUBCARRIERS));
-                        // for (i, frame) in prim_vec.iter().enumerate() {
-                        //     for j in range(0, frame.len()) {
-                        //         matrix[[i, j]] = frame[[0, j]];
-                        //     }
-                        // }
-                        //
-                        // print!("{:?}", matrix.shape());
-                        // print!("first_frame: {} frame: {}\n", first_frame.timestamp_us, stored_frame.buffer.back().unwrap().timestamp_us);
-
-                        // let resampled_sequence = sci_rs::signal::resample::resample(matrix.slice_axis(Axis(0), ), WINDOW_SIZE);
-
-                        // compute metrics. for fun. and profit.
-                        //let corr_window = csi::get_correlation_coefficient(
-                        //    prim_vec.first().unwrap().clone(),
-                        //    &prim_vec.last().unwrap().clone()
-                        //);
-                        let corr_window = csi::get_correlation_coefficient(
-                            stored_frame.buffer.peek().unwrap().amplitude.clone(),
-                            &stored_frame.buffer.back().unwrap().amplitude.clone()
-                        );
-
-                        entry.correlation_coefficient = corr_window;
-                    } else {
-                        // print!("{}\n", stored_frame.buffer.len());
-                        stored_frame.buffer.push(entry.clone());
-                        stored_frame.counter += 1;
-
-                        entry.correlation_coefficient = stored_frame.reading.correlation_coefficient;
                     }
+
+                    if let Some(pccs) = csi_metrics::compute_pcc_from_buffer(&matrix, self.window_size, 5) {
+                        for (i, pcc) in pccs.iter().enumerate() {
+                            let timestamp = stored.buffer.front().unwrap().timestamp.clone();
+                            // let offset_timestamp = timestamp.add(TimeDelta::milliseconds(100) * i as i32);
+                            let offset_timestamp = timestamp.add(TimeDelta::milliseconds(200) * i as i32);
+
+                            result.push(HandledMessage::CSIMetricsPCC(CSIMetricsPCCEntry {
+                                sensor_id: entry.sensor_id.clone(),
+                                timestamp: offset_timestamp,
+                                level: 2, // 100ms
+                                correlation_coefficient: pcc.clone(),
+                            }));
+                        }
+                    }
+                } else {
+                    stored.buffer.enqueue(entry.clone());
+                    stored.counter += 1;
                 }
-
-                // TODO: Fix likely off-by-one
-                if entry.interval >= 4095 {
-                    let ret_diff_from_max = 4096i32 - ret_sequence;
-                    entry.interval = sequence_identifier + ret_diff_from_max;
-                }
-
-                // println!("{:?}", entry);
-
-                // *stored_frame = reading.clone();
-                stored_frame.reading = entry.clone();
             }
-            None => {
-                self.frame_map.insert(key.clone(), CSIStore {
-                    buffer: AllocRingBuffer::new(self.window_size),
-                    reading: entry.clone(),
-                    counter: 0
-                });
-                println!("Added new client with key: {} (time: {})", key.clone(), entry.timestamp.clone());
-            }
+
+            stored.reading = entry.clone();
+        } else {
+            self.frame_map.insert(key.clone(), CSIStore {
+                buffer: AllocRingBuffer::new(self.window_size),
+                reading: entry.clone(),
+                counter: 0,
+            });
+            println!("Added new CSI client: {}", key);
         }
 
-        HandledMessage::CSIStorage(entry)
+        result.push(HandledMessage::CSIStorage(entry));
+        result
     }
 }

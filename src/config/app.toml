@@ -4,9 +4,9 @@ port = 6969
 csi_frame_size = 174
 
 [buffer]
-window_size = 50
+window_size = 100
 
 [timescale]
 url = "postgres://postgres:password@yellow:5432"
 batch_time = 5
-write_batch_size = 500
+write_batch_size = 200

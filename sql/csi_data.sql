@@ -10,6 +10,7 @@ CREATE TABLE csi_data (
     fft_gain SMALLINT,
     agc_gain SMALLINT,
     interval INTEGER,
+    pcc REAL,
     PRIMARY KEY (sensor_id, timestamp),
 
     CONSTRAINT check_imag_size CHECK (octet_length(imag) = 64),

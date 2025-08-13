@@ -7,6 +7,7 @@ use crate::bme280::BME280Entry;
 use crate::config;
 use crate::config::Timescale;
 use crate::csi::CSIStorageEntry;
+use crate::csi_metrics::CSIMetricsPCCEntry;
 use crate::pir::PIREntry;
 use crate::telemetry::TelemetryEntry;
 
@@ -31,12 +32,12 @@ impl TimescaleClient {
         let sink = self.client
             .copy_in("COPY csi_data \
                 (sensor_id, timestamp, imag, real, sequence_identifier, \
-                antenna, rssi, noise_floor, fft_gain, agc_gain, interval) FROM STDIN BINARY")
+                antenna, rssi, noise_floor, fft_gain, agc_gain, interval, pcc) FROM STDIN BINARY")
             .await.unwrap();
 
         let writer = BinaryCopyInWriter::new(sink,
             &[Type::MACADDR, Type::TIMESTAMP, Type::BYTEA, Type::BYTEA, Type::INT4,
-                    Type::INT2, Type::INT2, Type::INT2, Type::INT2, Type::INT2, Type::INT4]);
+                    Type::INT2, Type::INT2, Type::INT2, Type::INT2, Type::INT2, Type::INT4, Type::FLOAT4]);
 
         // Pin the writer since it will be used in async operations
         pin_mut!(writer);
@@ -56,11 +57,45 @@ impl TimescaleClient {
             row.push(&entry.fft_gain);
             row.push(&entry.agc_gain);
             row.push(&entry.interval);
+            row.push(&entry.correlation_coefficient);
             writer.as_mut().write(&row).await.unwrap();
         }
 
         match writer.finish().await {
             Ok(_) => println!("Write successful. Wrote {} csi_data rows.", given_batch.len()),
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    pub async fn write_csi_metrics_pcc_batch(&mut self, given_batch: &[CSIMetricsPCCEntry]) {
+        if given_batch.len() == 0 {
+            return;
+        }
+
+        let sink = self.client
+            .copy_in("COPY csi_metrics_pcc \
+                (sensor_id, timestamp, level, pcc) FROM STDIN BINARY")
+            .await.unwrap();
+
+        let writer = BinaryCopyInWriter::new(sink,
+            &[Type::MACADDR, Type::TIMESTAMP, Type::INT2, Type::FLOAT4]);
+
+        // Pin the writer since it will be used in async operations
+        pin_mut!(writer);
+
+        let mut row: Vec<&'_ (dyn ToSql + Sync)> = Vec::new();
+
+        for entry in given_batch {
+            row.clear();
+            row.push(&entry.sensor_id);
+            row.push(&entry.timestamp);
+            row.push(&entry.level);
+            row.push(&entry.correlation_coefficient);
+            writer.as_mut().write(&row).await.unwrap();
+        }
+
+        match writer.finish().await {
+            Ok(_) => println!("Write successful. Wrote {} csi_metrics_pcc rows.", given_batch.len()),
             Err(e) => panic!("{}", e),
         }
     }
@@ -99,7 +134,7 @@ impl TimescaleClient {
         }
 
         match writer.finish().await {
-            Ok(_) => println!("Write successful. Wrote {} throwie_pir rows.", given_batch.len()),
+            Ok(_) => println!("Write successful. Wrote {} csi_telemetry rows.", given_batch.len()),
             Err(e) => panic!("{}", e),
         }
     }
@@ -167,7 +202,7 @@ impl TimescaleClient {
         }
 
         match writer.finish().await {
-            Ok(_) => println!("Write successful. Wrote {} csi_telemetry rows.", given_batch.len()),
+            Ok(_) => println!("Write successful. Wrote {} throwie_pir rows.", given_batch.len()),
             Err(e) => panic!("{}", e),
         }
     }
